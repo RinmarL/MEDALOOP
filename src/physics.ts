@@ -1,0 +1,995 @@
+import {
+  ComputedStats,
+  CyberCatapult,
+  GuideRail,
+  GuideRailSegment,
+  LuckyRing,
+  MedalEntity,
+  MedalType,
+  PinEntity,
+  PocketSlot,
+  SplitLaser,
+  StopperBar,
+} from './types';
+
+// 厳守物理パラメータ（単位：px・秒）
+export const DT = 1 / 240; // 物理更新：1/240秒
+export const MEDAL_RADIUS = 15; // メダル半径：15 (直径30px)
+export const GRAVITY = 3000; // 下向き重力加速度：3000（落ち着いて軌道を追える自然な速度に調整）
+export const MAX_FALL_SPEED = 500; // 最高落下速度（終端速度キャップ）
+export const FRICTION_DECEL = 900; // 滑り摩擦による減速度：900
+export const INIT_VX_RANGE = 30; // 投入時の横速度：-30〜+30の一様乱数
+export const INIT_VY = 40; // 投入時の下向き速度：40
+export const RESTITUTION = 0.62; // メダル同士の反発係数：0.62
+export const TANGENT_COLLISION_RETENTION = 0.96; // 衝突時の接線方向の速度保持率：0.96
+export const CONTACT_NORMAL_THRESHOLD = 50; // 接触扱いにする法線相対速度：50未満
+export const TANGENT_CONTACT_RETENTION = 0.985; // 接触中の接線方向の速度保持率：0.985／更新
+
+// 盤面および下部スプリットコンソール論理座標
+export const BOARD_WIDTH = 460;
+export const BOARD_HEIGHT = 750;
+export const WALL_LEFT = 22;
+export const WALL_RIGHT = BOARD_WIDTH - 22;
+export const DROP_ZONE_MAX_Y = 96;
+export const POCKET_ENTRY_Y = 540;
+export const POCKET_TRIGGER_Y = 570;
+export const POCKET_EXIT_Y = 598;
+
+// 下皿（左下エリア：高さをコンパクトに縮小し3Dコイン積載に対応）
+export const TRAY_LEFT = 32;
+export const TRAY_RIGHT = 286;
+export const TRAY_TOP_Y = 616;
+export const TRAY_BOTTOM_Y = 724;
+
+// パチスロ式メダル投入口（右下エリア：高さをコンパクトに縮小）
+export const INSERT_BOX_LEFT = 300;
+export const INSERT_BOX_RIGHT = 428;
+export const INSERT_BOX_TOP = 616;
+export const INSERT_BOX_BOTTOM = 724;
+
+// 下皿内の3Dコインスタック列X座標（8列）
+export const TRAY_STACK_COLS = [52, 82, 112, 142, 172, 202, 232, 262];
+export const TRAY_STACK_STEP_Y = 6.0; // 3Dコイン1枚あたりの積み重ね厚み(px)
+
+export interface PhysicsCallbacks {
+  onPinHit: (medal: MedalEntity, pin: PinEntity) => void;
+  onPocketPass: (medal: MedalEntity, pocket: PocketSlot) => void;
+  onMedalClink: (intensity: number) => void;
+  onStopperToggle?: (active: boolean) => void;
+  onLaserSplit?: (x: number, y: number) => void;
+  onCatapultLaunch?: (medal: MedalEntity, catapult: CyberCatapult, originX?: number, originY?: number) => void;
+  onLuckyRingPass?: (medal: MedalEntity, ring: LuckyRing) => void;
+  onJackpot?: () => void;
+  onPocketToggleLamp?: (pocket: PocketSlot, lit: boolean) => void;
+  onRailHit?: (medal: MedalEntity, rail: GuideRail) => void;
+}
+
+const LUCKY_RING_SPOTS = [
+  { x: 105, y: 230 }, // 上部左
+  { x: 355, y: 230 }, // 上部右
+  { x: 230, y: 195 }, // バンパー真上中央
+  { x: 135, y: 330 }, // バンパー左下横
+  { x: 325, y: 330 }, // バンパー右下横
+  { x: 230, y: 415 }, // 下中央
+];
+
+export class PhysicsWorld {
+  public medals: MedalEntity[] = [];
+  public pins: PinEntity[] = [];
+  public stoppers: StopperBar[] = [];
+  public splitLasers: SplitLaser[] = [];
+  public catapults: CyberCatapult[] = [];
+  public pockets: PocketSlot[] = [];
+  public guideRails: GuideRail[] = [];
+  public luckyRing: LuckyRing = {
+    x: 230,
+    y: 195,
+    radius: 17, // リングと同じ外径サイズ感（コアr=16.5, 公転リング込みで最大r=22）
+    kind: 'mult',
+    active: false,
+    respawnTimer: 0,
+    respawnDuration: 1.0,
+    activeTimer: 5.0,
+    pulsePhase: 0,
+    lastSpotIndex: -1,
+  };
+  private nextMedalId: number = 1;
+  private accumulator: number = 0;
+  private stepCount: number = 0;
+  private lastStats?: ComputedStats;
+
+  public getRandomLaserLine(): { x1: number; y1: number; x2: number; y2: number } {
+    // 盤面の中段エリア（y: 210〜410、x: 105〜355）に長さ約52pxのランダム線分（+10px延長）
+    const cx = 105 + Math.random() * (BOARD_WIDTH - 210);
+    const cy = 210 + Math.random() * 200;
+    const ang = (Math.random() - 0.5) * 0.48; // 水平±14度
+    const halfLen = 26; // 全長 52px (以前の42pxから10px延長)
+    return {
+      x1: Math.round(cx - Math.cos(ang) * halfLen),
+      y1: Math.round(cy - Math.sin(ang) * halfLen),
+      x2: Math.round(cx + Math.cos(ang) * halfLen),
+      y2: Math.round(cy + Math.sin(ang) * halfLen),
+    };
+  }
+
+  public setupBoard(stats: ComputedStats): void {
+    const centerX = BOARD_WIDTH * 0.5;
+    this.pins = [];
+    this.stoppers = [];
+    this.splitLasers = [];
+    this.catapults = [];
+    this.pockets = [];
+    this.guideRails = [];
+
+    let pinId = 1;
+
+    // 1. 中央3連トライアングルバンパー（ネオン発光・大反発）
+    const bumperMult = stats.pinLayoutTier >= 4 ? 4.5 : stats.pinLayoutTier >= 2 ? 3.5 : 2.5;
+    const bumpers = [
+      { x: 168, y: 246, radius: 23 }, // 上左バンパー
+      { x: 292, y: 246, radius: 23 }, // 上右バンパー
+      { x: 230, y: 326, radius: 25 }, // 下中央バンパー
+    ];
+    for (const b of bumpers) {
+      this.pins.push({
+        id: pinId++,
+        x: b.x,
+        y: b.y,
+        radius: b.radius,
+        baseScore: Math.round(stats.basePinScore * bumperMult),
+        kind: 'bumper',
+        hitAnim: 0,
+      });
+    }
+
+    // 2. なめらかなL字ガイドレール（上部左右のコーナーに配置し、端っこ落としを優雅に中央へ誘導＆スタック完全防止）
+    const leftPoints = [
+      { x: 22, y: 60 },
+      { x: 23, y: 90 },
+      { x: 35, y: 120 },
+      { x: 58, y: 142 },
+      { x: 86, y: 154 },
+    ];
+    const rightPoints = leftPoints.map((pt) => ({ x: BOARD_WIDTH - pt.x, y: pt.y }));
+
+    function createSegments(points: { x: number; y: number }[]): GuideRailSegment[] {
+      const segs: GuideRailSegment[] = [];
+      for (let i = 0; i < points.length - 1; i++) {
+        segs.push({
+          x1: points[i].x,
+          y1: points[i].y,
+          x2: points[i + 1].x,
+          y2: points[i + 1].y,
+        });
+      }
+      return segs;
+    }
+
+    this.guideRails = [
+      {
+        id: 1,
+        side: 'left',
+        points: leftPoints,
+        segments: createSegments(leftPoints),
+        hitAnim: 0,
+      },
+      {
+        id: 2,
+        side: 'right',
+        points: rightPoints,
+        segments: createSegments(rightPoints),
+        hitAnim: 0,
+      },
+    ];
+
+    // 3. 釘（ピン）配置：洗練された抜け感と完璧な千鳥ダイヤモンド対称配置（計24本）
+    const pinCoords = [
+      // 上部1列目 (5本：レールから流れてきたメダルを優しく中央へ振り分け)
+      { x: 130, y: 175 },
+      { x: 180, y: 175 },
+      { x: 230, y: 175 },
+      { x: 280, y: 175 },
+      { x: 330, y: 175 },
+
+      // 上部外側振り分け (2本：バンパー上部アプローチを開放し外側を中央へ誘導)
+      { x: 84, y: 216 },
+      { x: 376, y: 216 },
+
+      // バンパー外側ガード (2本：バンパー外側へ逸れるメダルをバンパーへ跳ね返す)
+      { x: 94, y: 286 },
+      { x: 366, y: 286 },
+
+      // バンパー下・中段受け (6本：5スロットへ綺麗に散らす千鳥配置)
+      { x: 80, y: 376 },
+      { x: 140, y: 376 },
+      { x: 200, y: 376 },
+      { x: 260, y: 376 },
+      { x: 320, y: 376 },
+      { x: 380, y: 376 },
+
+      // スロット境界スプリット (4本：4本の仕切り棒の直上ピッタリに配置)
+      { x: 105, y: 448 },
+      { x: 188, y: 448 },
+      { x: 272, y: 448 },
+      { x: 355, y: 448 },
+
+      // 各スロット直上誘導 (5本：5つのスロット中央の直上に配置)
+      { x: 64, y: 496 },
+      { x: 147, y: 496 },
+      { x: 230, y: 496 },
+      { x: 313, y: 496 },
+      { x: 396, y: 496 },
+    ];
+
+    pinCoords.forEach((pt, idx) => {
+      let isBumper = false;
+      let radius = 6.0;
+      let mult = 1.0;
+
+      // Tier向上でバンパー横ピンがミニバンパー化
+      if (stats.pinLayoutTier >= 2 && (idx === 7 || idx === 8)) {
+        isBumper = true;
+        radius = 9.0;
+        mult = 2.0;
+      }
+      if (stats.pinLayoutTier >= 3 && (idx === 11 || idx === 12)) { // 中段中央
+        isBumper = true;
+        radius = 8.5;
+        mult = 2.0;
+      }
+
+      this.pins.push({
+        id: pinId++,
+        x: pt.x,
+        y: pt.y,
+        radius,
+        baseScore: Math.round(stats.basePinScore * mult),
+        kind: isBumper ? 'bumper' : 'normal',
+        hitAnim: 0,
+      });
+    });
+
+    // 3. サイバー・カタパルト（下部左右から最上部へ打ち上げループ）
+    if (stats.catapultUnlocked) {
+      this.catapults.push(
+        { id: 1, side: 'left', x: 42, y: 486, radius: 18, launchAnim: 0 },
+        { id: 2, side: 'right', x: 418, y: 486, radius: 18, launchAnim: 0 }
+      );
+    }
+
+    // 4. スプリット・レーザー（長さ約42px、5秒維持→3秒消滅、通過でメダル分裂）
+    if (stats.splitLaserCount >= 1) {
+      const line1 = this.getRandomLaserLine();
+      this.splitLasers.push({
+        id: 1,
+        ...line1,
+        active: true,
+        timer: 0,
+        activeDuration: 5.0,
+        cooldownDuration: 3.0,
+        pulsePhase: 0,
+      });
+    }
+    if (stats.splitLaserCount >= 2) {
+      const line2 = this.getRandomLaserLine();
+      this.splitLasers.push({
+        id: 2,
+        ...line2,
+        active: false,
+        timer: 1.5, // 交互に出現するようオフセット
+        activeDuration: 5.0,
+        cooldownDuration: 3.0,
+        pulsePhase: Math.PI,
+      });
+    }
+
+    // 下部ポケット（5レーン）：初期倍率は 1倍 と 2倍 のみ、起点ノード解放で中央が 4倍、スロット倍率強化で全体乗算
+    this.lastStats = stats;
+    const totalInnerW = WALL_RIGHT - WALL_LEFT;
+    const slotCount = 5;
+    const slotW = totalInnerW / slotCount;
+    const centerBase = stats.centerSlot4xUnlocked ? 4 : 1;
+    const baseMultipliers = [1, 2, centerBase, 2, 1];
+    const multipliers = baseMultipliers.map((m) => m * stats.slotMultiplier);
+
+    for (let i = 0; i < slotCount; i++) {
+      const x1 = WALL_LEFT + i * slotW;
+      const x2 = x1 + slotW;
+      const isCenter = i === 2;
+      const spawnsBonus = isCenter && stats.bonusPocketUnlocked;
+      const mult = multipliers[i];
+      this.pockets.push({
+        index: i,
+        x1,
+        x2,
+        label: spawnsBonus ? `x${mult} +1M` : `x${mult}`,
+        scoreMultiplier: mult,
+        spawnsBonusMedal: spawnsBonus,
+        flashAnim: 0,
+        lit: false,
+      });
+    }
+
+    this.relocateLuckyRing(stats);
+  }
+
+  public resetPocketsLit(): void {
+    for (const p of this.pockets) {
+      p.lit = false;
+    }
+  }
+
+  private relocateLuckyRing(stats?: ComputedStats): void {
+    const curStats = stats || this.lastStats;
+    if (!curStats || (curStats.boostRingLevel <= 0 && curStats.cloneRingLevel <= 0)) {
+      this.luckyRing.active = false;
+      this.luckyRing.respawnTimer = 999;
+      return;
+    }
+
+    // 前回と異なるスポットを抽選（別の場所で出現）
+    let spotIdx = Math.floor(Math.random() * LUCKY_RING_SPOTS.length);
+    if (spotIdx === this.luckyRing.lastSpotIndex && LUCKY_RING_SPOTS.length > 1) {
+      spotIdx =
+        (spotIdx + 1 + Math.floor(Math.random() * (LUCKY_RING_SPOTS.length - 1))) % LUCKY_RING_SPOTS.length;
+    }
+    this.luckyRing.lastSpotIndex = spotIdx;
+    const spot = LUCKY_RING_SPOTS[spotIdx];
+    this.luckyRing.x = spot.x;
+    this.luckyRing.y = spot.y;
+
+    if (curStats.boostRingLevel > 0 && curStats.cloneRingLevel > 0) {
+      this.luckyRing.kind = Math.random() < 0.5 ? 'mult' : 'split';
+    } else if (curStats.boostRingLevel > 0) {
+      this.luckyRing.kind = 'mult';
+    } else {
+      this.luckyRing.kind = 'split';
+    }
+
+    this.luckyRing.active = true;
+    this.luckyRing.activeTimer = 5.0; // 5秒タイムリミット！
+    this.luckyRing.respawnTimer = 0;
+  }
+
+  public spawnInitialTrayMedals(types: MedalType[]): void {
+    // 初期メダルを中央寄りのスタック列に3Dタワー状に積んで配置
+    const preferredCols = [2, 3, 1, 4, 2, 3];
+    const colCounts = new Array(TRAY_STACK_COLS.length).fill(0);
+
+    types.forEach((type, idx) => {
+      const colIdx = preferredCols[idx % preferredCols.length];
+      const stackIdx = colCounts[colIdx]++;
+      const jitterX = Math.sin(idx * 2.3 + 1.1) * 2.5;
+      const x = TRAY_STACK_COLS[colIdx] + jitterX;
+      const y = TRAY_BOTTOM_Y - 16 - stackIdx * TRAY_STACK_STEP_Y - 12 - idx * 4;
+      const m = this.spawnMedal(x, y, type, 'tray');
+      m.vx = 0;
+      m.vy = 40;
+    });
+  }
+
+  public spawnMedal(
+    x: number,
+    y: number,
+    type: MedalType,
+    zone: 'board' | 'tray' = 'board'
+  ): MedalEntity {
+    const minX = (zone === 'tray' ? TRAY_LEFT : WALL_LEFT) + MEDAL_RADIUS + 2;
+    const maxX = (zone === 'tray' ? TRAY_RIGHT : WALL_RIGHT) - MEDAL_RADIUS - 2;
+    const clampedX = Math.max(minX, Math.min(maxX, x));
+
+    const vx = (Math.random() * 2 - 1) * INIT_VX_RANGE;
+    const vy = INIT_VY;
+
+    const medal: MedalEntity = {
+      id: this.nextMedalId++,
+      type,
+      x: clampedX,
+      y,
+      vx,
+      vy,
+      radius: MEDAL_RADIUS,
+      zone,
+      chargeMultiplier: 1.0,
+      contactFlash: 0,
+      passedPocket: zone === 'tray',
+      lastPinHitId: -1,
+      pinHitCooldown: 0,
+      trail: [{ x: clampedX, y }],
+    };
+    this.medals.push(medal);
+    return medal;
+  }
+
+  public update(
+    frameDeltaSec: number,
+    stats: ComputedStats,
+    callbacks: PhysicsCallbacks
+  ): void {
+    const clampedDelta = Math.min(frameDeltaSec, 0.1);
+    this.accumulator += clampedDelta;
+
+    for (const pin of this.pins) {
+      if (pin.hitAnim > 0) {
+        pin.hitAnim = Math.max(0, pin.hitAnim - clampedDelta * 4);
+      }
+    }
+    for (const pocket of this.pockets) {
+      if (pocket.flashAnim > 0) {
+        pocket.flashAnim = Math.max(0, pocket.flashAnim - clampedDelta * 3);
+      }
+    }
+    for (const rail of this.guideRails) {
+      if (rail.hitAnim > 0) {
+        rail.hitAnim = Math.max(0, rail.hitAnim - clampedDelta * 4);
+      }
+    }
+    // カタパルトのアニメーション減衰
+    for (const cat of this.catapults) {
+      if (cat.launchAnim > 0) {
+        cat.launchAnim = Math.max(0, cat.launchAnim - clampedDelta * 4);
+      }
+    }
+
+    // スプリット・レーザーのサイクル更新（5秒出現→3秒消滅）
+    for (const laser of this.splitLasers) {
+      laser.pulsePhase += clampedDelta * 6.0;
+      laser.timer += clampedDelta;
+      if (laser.active && laser.timer >= laser.activeDuration) {
+        laser.active = false;
+        laser.timer = 0;
+      } else if (!laser.active && laser.timer >= laser.cooldownDuration) {
+        const newLine = this.getRandomLaserLine();
+        laser.x1 = newLine.x1;
+        laser.y1 = newLine.y1;
+        laser.x2 = newLine.x2;
+        laser.y2 = newLine.y2;
+        laser.active = true;
+        laser.timer = 0;
+      }
+    }
+
+    this.lastStats = stats;
+    this.luckyRing.pulsePhase += clampedDelta * 4.5;
+    if (this.luckyRing.active) {
+      this.luckyRing.activeTimer -= clampedDelta;
+      if (this.luckyRing.activeTimer <= 0) {
+        // 5秒とれなかったら1秒消えて別の場所で出現
+        this.luckyRing.active = false;
+        this.luckyRing.respawnTimer = 1.0;
+        this.luckyRing.respawnDuration = 1.0;
+      }
+    } else {
+      this.luckyRing.respawnTimer -= clampedDelta;
+      if (this.luckyRing.respawnTimer <= 0) {
+        this.relocateLuckyRing(stats);
+      }
+    }
+
+    while (this.accumulator >= DT) {
+      this.stepPhysics(stats, callbacks);
+      this.accumulator -= DT;
+    }
+  }
+
+  private stepPhysics(stats: ComputedStats, callbacks: PhysicsCallbacks): void {
+    this.stepCount++;
+    const recordTrail = this.stepCount % 5 === 0;
+    const n = this.medals.length;
+
+    for (let i = 0; i < n; i++) {
+      const m = this.medals[i];
+
+      if (m.pinHitCooldown > 0) {
+        m.pinHitCooldown = Math.max(0, m.pinHitCooldown - DT);
+      }
+      if (m.contactFlash > 0) {
+        m.contactFlash = Math.max(0, m.contactFlash - DT * 3);
+      }
+      if (m.splitCooldown && m.splitCooldown > 0) {
+        m.splitCooldown = Math.max(0, m.splitCooldown - DT);
+      }
+
+      // 1) 重力を速度に加算（盤面ゾーンは最高落下速度をキャップ）
+      m.vy += GRAVITY * DT;
+      if (m.zone === 'board') {
+        m.vy = Math.min(MAX_FALL_SPEED, m.vy);
+      }
+
+      // 2) 速度方向と逆向きに摩擦で減速（毎秒900の一定減速、反転しない）
+      const speed = Math.hypot(m.vx, m.vy);
+      if (speed > 0) {
+        const newSpeed = Math.max(0, speed - FRICTION_DECEL * DT);
+        const scale = newSpeed / speed;
+        m.vx *= scale;
+        m.vy *= scale;
+      }
+
+      // 3) 位置更新
+      m.x += m.vx * DT;
+      m.y += m.vy * DT;
+
+      if (m.zone === 'board' && recordTrail) {
+        m.trail.push({ x: m.x, y: m.y });
+        if (m.trail.length > 14) {
+          m.trail.shift();
+        }
+      }
+
+      // ラッキーオーブ（通過ゲート）判定（物理挙動は一切変えずに効果のみ発動）
+      if (m.zone === 'board' && this.luckyRing.active) {
+        const rdx = m.x - this.luckyRing.x;
+        const rdy = m.y - this.luckyRing.y;
+        const triggerDist = this.luckyRing.radius + 6;
+        if (rdx * rdx + rdy * rdy <= triggerDist * triggerDist) {
+          this.luckyRing.active = false;
+          this.luckyRing.respawnTimer = 3.0; // 取得できた場合は3秒後に再出現！
+          this.luckyRing.respawnDuration = 3.0;
+          callbacks.onLuckyRingPass?.(m, this.luckyRing);
+        }
+      }
+
+      // ポケット通過判定
+      if (!m.passedPocket && m.y >= POCKET_TRIGGER_Y) {
+        m.passedPocket = true;
+        const pocket = this.findPocketAt(m.x);
+        if (pocket) {
+          pocket.flashAnim = 1.0;
+          pocket.lit = !pocket.lit; // トグル点灯・消灯
+          callbacks.onPocketPass(m, pocket);
+          callbacks.onPocketToggleLamp?.(pocket, pocket.lit);
+
+          // 5箇所すべて点灯しているかチェック
+          if (this.pockets.length === 5 && this.pockets.every((p) => p.lit)) {
+            // 全点灯！JACKPOT FEVER発動
+            callbacks.onJackpot?.();
+            // 全て消灯（リセット）
+            this.pockets.forEach((p) => (p.lit = false));
+          }
+        }
+        m.zone = 'tray';
+        m.trail = [];
+        m.y = Math.max(m.y, TRAY_TOP_Y + 14);
+        const targetColX = this.pickTrayStackColumnX(m.x, m.id);
+        m.x = targetColX;
+        m.vx = 0;
+        m.vy = Math.min(260, Math.max(90, m.vy * 0.45));
+      }
+    }
+
+    // 4. 盤面メダル同士の2D円衝突処理（傾斜盤面 zone === 'board' のみ厳密適用）
+    for (let i = 0; i < n; i++) {
+      const a = this.medals[i];
+      if (a.zone !== 'board') continue;
+      for (let j = i + 1; j < n; j++) {
+        const b = this.medals[j];
+        if (b.zone !== 'board') continue;
+        this.resolveMedalPair(a, b, stats, callbacks);
+      }
+    }
+
+    // 5. 壁・ピン・ストッパーとの衝突処理（盤面ゾーン）
+    for (let i = 0; i < n; i++) {
+      const m = this.medals[i];
+      if (m.zone === 'board') {
+        this.resolveBoardConstraints(m, callbacks);
+      }
+    }
+
+    // 6. 下皿ゾーン（zone === 'tray'）の3Dコインスタック積載処理
+    this.resolveTrayStacking(callbacks);
+  }
+
+  public pickTrayStackColumnX(preferX: number, medalId: number): number {
+    // 各列の現在枚数をカウントし、極端に高い列を避けつつ落下Xに近い列を選択
+    const counts = new Array(TRAY_STACK_COLS.length).fill(0);
+    for (const m of this.medals) {
+      if (m.zone !== 'tray') continue;
+      const cIdx = this.getNearestTrayColIndex(m.x);
+      counts[cIdx]++;
+    }
+
+    let bestCol = 0;
+    let bestScore = Infinity;
+    for (let c = 0; c < TRAY_STACK_COLS.length; c++) {
+      const dist = Math.abs(TRAY_STACK_COLS[c] - preferX);
+      const heightPenalty = counts[c] * 28;
+      const score = dist + heightPenalty;
+      if (score < bestScore) {
+        bestScore = score;
+        bestCol = c;
+      }
+    }
+    const jitter = Math.sin(medalId * 1.9 + 0.7) * 2.5;
+    return TRAY_STACK_COLS[bestCol] + jitter;
+  }
+
+  private getNearestTrayColIndex(x: number): number {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let c = 0; c < TRAY_STACK_COLS.length; c++) {
+      const d = Math.abs(TRAY_STACK_COLS[c] - x);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = c;
+      }
+    }
+    return bestIdx;
+  }
+
+  private resolveTrayStacking(callbacks: PhysicsCallbacks): void {
+    const colBuckets: MedalEntity[][] = TRAY_STACK_COLS.map(() => []);
+
+    for (const m of this.medals) {
+      if (m.zone !== 'tray') continue;
+      const cIdx = this.getNearestTrayColIndex(m.x);
+      colBuckets[cIdx].push(m);
+    }
+
+    const baseFloorY = TRAY_BOTTOM_Y - 15;
+
+    for (let c = 0; c < colBuckets.length; c++) {
+      const bucket = colBuckets[c];
+      if (bucket.length === 0) continue;
+
+      // 下にあるメダル（yが大きい順、同値ならID順）から順に下から積み上げる
+      bucket.sort((a, b) => b.y - a.y || a.id - b.id);
+
+      for (let k = 0; k < bucket.length; k++) {
+        const m = bucket[k];
+        const jitter = Math.sin(m.id * 1.9 + k * 0.8) * 2.4;
+        const targetX = TRAY_STACK_COLS[c] + jitter;
+        m.x += (targetX - m.x) * 0.25;
+        m.vx = 0;
+
+        // 最大10段まで視覚的に積み上げ
+        const visualStackIdx = Math.min(k, 10);
+        const floorY = baseFloorY - visualStackIdx * TRAY_STACK_STEP_Y;
+
+        if (m.y < TRAY_TOP_Y + 10) {
+          m.y = TRAY_TOP_Y + 10;
+          if (m.vy < 0) m.vy = 0;
+        }
+
+        if (m.y >= floorY) {
+          m.y = floorY;
+          if (m.vy > 140) {
+            callbacks.onMedalClink(Math.min(0.7, m.vy / 450));
+          }
+          if (m.vy > 0) {
+            m.vy = m.vy < CONTACT_NORMAL_THRESHOLD * 1.6 ? 0 : -m.vy * 0.25;
+          }
+        }
+      }
+    }
+  }
+
+  private resolveMedalPair(
+    a: MedalEntity,
+    b: MedalEntity,
+    stats: ComputedStats,
+    callbacks: PhysicsCallbacks
+  ): void {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const minDist = a.radius + b.radius; // 42 px
+    const distSq = dx * dx + dy * dy;
+
+    if (distSq >= minDist * minDist) return;
+
+    const dist = Math.sqrt(distSq);
+    let nx = 1;
+    let ny = 0;
+    if (dist > 1e-6) {
+      nx = dx / dist;
+      ny = dy / dist;
+    }
+
+    const overlap = minDist - dist;
+    const push = overlap * 0.5;
+    a.x -= nx * push;
+    a.y -= ny * push;
+    b.x += nx * push;
+    b.y += ny * push;
+
+    const tx = -ny;
+    const ty = nx;
+
+    const vAn = a.vx * nx + a.vy * ny;
+    const vAt = a.vx * tx + a.vy * ty;
+    const vBn = b.vx * nx + b.vy * ny;
+    const vBt = b.vx * tx + b.vy * ty;
+
+    const relNormalSpeed = vAn - vBn;
+
+    if (stats.contactChargeRate > 0 && a.zone === 'board' && b.zone === 'board') {
+      const plasmaBoost = a.type === 'plasma' || b.type === 'plasma' ? 2.5 : 1.0;
+      const gain = stats.contactChargeRate * plasmaBoost * DT;
+      if (a.chargeMultiplier < stats.contactMaxMultiplier) {
+        a.chargeMultiplier = Math.min(stats.contactMaxMultiplier, a.chargeMultiplier + gain);
+        a.contactFlash = 0.6;
+      }
+      if (b.chargeMultiplier < stats.contactMaxMultiplier) {
+        b.chargeMultiplier = Math.min(stats.contactMaxMultiplier, b.chargeMultiplier + gain);
+        b.contactFlash = 0.6;
+      }
+    }
+
+    if (relNormalSpeed <= 0) {
+      const cmVt = 0.5 * (vAt + vBt);
+      const relVt = (vAt - vBt) * TANGENT_CONTACT_RETENTION;
+      const newVAt = cmVt + 0.5 * relVt;
+      const newVBt = cmVt - 0.5 * relVt;
+      a.vx = vAn * nx + newVAt * tx;
+      a.vy = vAn * ny + newVAt * ty;
+      b.vx = vBn * nx + newVBt * tx;
+      b.vy = vBn * ny + newVBt * ty;
+      return;
+    }
+
+    const cmVn = 0.5 * (vAn + vBn);
+    const cmVt = 0.5 * (vAt + vBt);
+
+    if (relNormalSpeed < CONTACT_NORMAL_THRESHOLD) {
+      const newRelVt = (vAt - vBt) * TANGENT_CONTACT_RETENTION;
+      const newVAt = cmVt + 0.5 * newRelVt;
+      const newVBt = cmVt - 0.5 * newRelVt;
+
+      a.vx = cmVn * nx + newVAt * tx;
+      a.vy = cmVn * ny + newVAt * ty;
+      b.vx = cmVn * nx + newVBt * tx;
+      b.vy = cmVn * ny + newVBt * ty;
+    } else {
+      const newRelVn = -RESTITUTION * relNormalSpeed;
+      const newRelVt = (vAt - vBt) * TANGENT_COLLISION_RETENTION;
+
+      const newVAn = cmVn + 0.5 * newRelVn;
+      const newVBn = cmVn - 0.5 * newRelVn;
+      const newVAt = cmVt + 0.5 * newRelVt;
+      const newVBt = cmVt - 0.5 * newRelVt;
+
+      a.vx = newVAn * nx + newVAt * tx;
+      a.vy = newVAn * ny + newVAt * ty;
+      b.vx = newVBn * nx + newVBt * tx;
+      b.vy = newVBn * ny + newVBt * ty;
+
+      if (relNormalSpeed > 110) {
+        callbacks.onMedalClink(Math.min(1, relNormalSpeed / 400));
+      }
+    }
+  }
+
+  private resolveBoardConstraints(m: MedalEntity, callbacks: PhysicsCallbacks): void {
+    const r = m.radius;
+
+    // 盤面ゾーンの左右外壁
+    if (m.x - r < WALL_LEFT) {
+      m.x = WALL_LEFT + r;
+      if (m.vx < 0) {
+        const approach = -m.vx;
+        m.vx = approach < CONTACT_NORMAL_THRESHOLD ? 0 : approach * RESTITUTION;
+        m.vy *= approach < CONTACT_NORMAL_THRESHOLD ? TANGENT_CONTACT_RETENTION : TANGENT_COLLISION_RETENTION;
+      }
+    } else if (m.x + r > WALL_RIGHT) {
+      m.x = WALL_RIGHT - r;
+      if (m.vx > 0) {
+        const approach = m.vx;
+        m.vx = approach < CONTACT_NORMAL_THRESHOLD ? 0 : -approach * RESTITUTION;
+        m.vy *= approach < CONTACT_NORMAL_THRESHOLD ? TANGENT_CONTACT_RETENTION : TANGENT_COLLISION_RETENTION;
+      }
+    }
+
+    // ピンとの衝突
+    for (let i = 0; i < this.pins.length; i++) {
+      const pin = this.pins[i];
+      const dx = m.x - pin.x;
+      const dy = m.y - pin.y;
+      const minDist = r + pin.radius;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < minDist * minDist) {
+        const dist = Math.sqrt(distSq) || 0.001;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const overlap = minDist - dist;
+        m.x += nx * overlap;
+        m.y += ny * overlap;
+
+        const tx = -ny;
+        const ty = nx;
+        const vn = m.vx * nx + m.vy * ny;
+        const vt = m.vx * tx + m.vy * ty;
+
+        if (vn < 0) {
+          const approach = -vn;
+          let bounceRestitution = pin.kind === 'bumper' ? 1.05 : RESTITUTION;
+          if (m.type === 'bounce') bounceRestitution = Math.min(1.35, bounceRestitution * 1.3);
+
+          const newVn =
+            approach < CONTACT_NORMAL_THRESHOLD && pin.kind === 'normal'
+              ? 0
+              : Math.max(approach * bounceRestitution, pin.kind === 'bumper' ? 260 : 0);
+          let newVt =
+            vt * (approach < CONTACT_NORMAL_THRESHOLD ? TANGENT_CONTACT_RETENTION : TANGENT_COLLISION_RETENTION);
+
+          // ピン真上でのバランス停止（スタック）防止
+          if (Math.abs(nx) < 0.08 && Math.abs(newVt) < 15) {
+            newVt += (m.id % 2 === 0 ? 1 : -1) * 28;
+          }
+
+          m.vx = newVn * nx + newVt * tx;
+          m.vy = newVn * ny + newVt * ty;
+
+          if (m.lastPinHitId !== pin.id || m.pinHitCooldown <= 0) {
+            m.lastPinHitId = pin.id;
+            m.pinHitCooldown = 0.09;
+            pin.hitAnim = 1.0;
+            callbacks.onPinHit(m, pin);
+          }
+        }
+      }
+    }
+
+    // スプリット・レーザーとの交差判定（通過でメダル2枚に分裂！）
+    if (m.zone === 'board' && (!m.splitCooldown || m.splitCooldown <= 0)) {
+      for (let i = 0; i < this.splitLasers.length; i++) {
+        const laser = this.splitLasers[i];
+        if (!laser.active) continue;
+        const dx = laser.x2 - laser.x1;
+        const dy = laser.y2 - laser.y1;
+        const l2 = dx * dx + dy * dy;
+        let t = 0;
+        if (l2 > 0) {
+          t = Math.max(0, Math.min(1, ((m.x - laser.x1) * dx + (m.y - laser.y1) * dy) / l2));
+        }
+        const px = laser.x1 + t * dx;
+        const py = laser.y1 + t * dy;
+        const distSq = (m.x - px) ** 2 + (m.y - py) ** 2;
+        if (distSq <= (MEDAL_RADIUS + 3) ** 2) {
+          // レーザー通過！メダル分裂！
+          m.splitCooldown = 0.55;
+          m.vx -= 32;
+          m.contactFlash = 0.8;
+
+          this.medals.push({
+            id: this.nextMedalId++,
+            type: m.type,
+            x: m.x + 8,
+            y: m.y,
+            vx: m.vx + 64,
+            vy: m.vy,
+            radius: MEDAL_RADIUS,
+            zone: 'board',
+            chargeMultiplier: m.chargeMultiplier,
+            contactFlash: 0.8,
+            passedPocket: false,
+            lastPinHitId: -1,
+            pinHitCooldown: 0,
+            splitCooldown: 0.55,
+            trail: [{ x: m.x + 8, y: m.y }],
+          });
+
+          callbacks.onLaserSplit?.(px, py);
+          break;
+        }
+      }
+    }
+
+    // サイバー・カタパルトとの吸い込み判定（盤面最上部へ直接ワープ！倍率・特殊属性完全維持）
+    if (m.zone === 'board' && m.vy > 0) {
+      for (let i = 0; i < this.catapults.length; i++) {
+        const cat = this.catapults[i];
+        const cdist = Math.hypot(m.x - cat.x, m.y - cat.y);
+        if (cdist <= cat.radius + 8) {
+          cat.launchAnim = 1.0;
+          const originX = m.x;
+          const originY = m.y;
+
+          // 最上部（y ≈ 65）へ瞬時ワープ
+          // 左右カタパルトに応じて左右の上部ガイドレール直下にワープ
+          const warpX = cat.side === 'left'
+            ? 72 + Math.random() * 32
+            : BOARD_WIDTH - 72 - Math.random() * 32;
+          const warpY = 65;
+
+          m.x = warpX;
+          m.y = warpY;
+          m.vy = 45 + Math.random() * 20; // 最上部からの自然な落下初速
+          m.vx = cat.side === 'left' ? 18 : -18; // 盤面中央寄りへの緩やかな横初速
+          m.contactFlash = 1.0;
+          m.passedPocket = false;
+          // ※ m.chargeMultiplier（接触帯電倍率やオーブ倍率）および m.type（特殊効果）は100%完全維持！
+          m.trail = [{ x: m.x, y: m.y }];
+
+          callbacks.onCatapultLaunch?.(m, cat, originX, originY);
+          break;
+        }
+      }
+    }
+
+    // ガイドレール（なめらかなL字・アール型コーナー装飾レール）との衝突
+    for (let i = 0; i < this.guideRails.length; i++) {
+      const rail = this.guideRails[i];
+      let hit = false;
+      for (let s = 0; s < rail.segments.length; s++) {
+        const seg = rail.segments[s];
+        if (this.collideWithCapsule(m, seg.x1, seg.y1, seg.x2, seg.y2, 4.0, true)) {
+          hit = true;
+        }
+      }
+      if (hit) {
+        rail.hitAnim = 1.0;
+        callbacks.onRailHit?.(m, rail);
+      }
+    }
+
+    // ポケットの仕切り壁との衝突
+    for (let i = 1; i < this.pockets.length; i++) {
+      const divX = this.pockets[i].x1;
+      this.collideWithCapsule(m, divX, POCKET_ENTRY_Y, divX, POCKET_EXIT_Y, 4, true);
+    }
+  }
+
+  private collideWithCapsule(
+    m: MedalEntity,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    halfThick: number,
+    preventTopBalance: boolean
+  ): boolean {
+    const abx = x2 - x1;
+    const aby = y2 - y1;
+    const abLenSq = abx * abx + aby * aby;
+    let t = 0;
+    if (abLenSq > 0) {
+      t = ((m.x - x1) * abx + (m.y - y1) * aby) / abLenSq;
+      t = Math.max(0, Math.min(1, t));
+    }
+    const cx = x1 + t * abx;
+    const cy = y1 + t * aby;
+
+    const dx = m.x - cx;
+    const dy = m.y - cy;
+    const minDist = m.radius + halfThick;
+    const distSq = dx * dx + dy * dy;
+
+    if (distSq < minDist * minDist) {
+      const dist = Math.sqrt(distSq) || 0.001;
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const overlap = minDist - dist;
+      m.x += nx * overlap;
+      m.y += ny * overlap;
+
+      const tx = -ny;
+      const ty = nx;
+      const vn = m.vx * nx + m.vy * ny;
+      const vt = m.vx * tx + m.vy * ty;
+
+      if (vn < 0) {
+        const approach = -vn;
+        const newVn = approach < CONTACT_NORMAL_THRESHOLD ? 0 : approach * RESTITUTION;
+        let newVt =
+          vt * (approach < CONTACT_NORMAL_THRESHOLD ? TANGENT_CONTACT_RETENTION : TANGENT_COLLISION_RETENTION);
+
+        if (preventTopBalance && Math.abs(nx) < 0.08 && Math.abs(newVt) < 15) {
+          newVt += (m.id % 2 === 0 ? 1 : -1) * 28;
+        }
+
+        m.vx = newVn * nx + newVt * tx;
+        m.vy = newVn * ny + newVt * ty;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private findPocketAt(x: number): PocketSlot | null {
+    for (let i = 0; i < this.pockets.length; i++) {
+      const p = this.pockets[i];
+      if (x >= p.x1 && x <= p.x2) return p;
+    }
+    return this.pockets[2] || null;
+  }
+}

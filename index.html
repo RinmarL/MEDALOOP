@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>MEDALOOP</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app" class="slot-cabinet">
+      <!-- スマスロ風ダーククローム＆デジタルLEDヘッダー -->
+      <header id="cabinet-header" class="cabinet-header">
+        <button id="btn-home" class="chrome-icon-btn" title="ホーム画面へ">🏠</button>
+
+        <div class="digital-bezel score-bezel">
+          <span class="bezel-label">SCORE:</span>
+          <div class="lcd-screen">
+            <span class="lcd-ghost">888888</span>
+            <span id="hud-score" class="lcd-digits cyan-glow">0</span>
+          </div>
+        </div>
+
+        <div class="digital-bezel time-bezel" id="timer-container">
+          <span class="bezel-label">TIME:</span>
+          <div class="lcd-screen">
+            <span class="lcd-ghost">88.8s</span>
+            <span id="hud-timer" class="lcd-digits magenta-glow">15.0s</span>
+          </div>
+        </div>
+
+        <button id="btn-sound" class="chrome-icon-btn" title="サウンド切替">🔊</button>
+      </header>
+
+      <!-- メイン筐体スクリーン領域 -->
+      <main class="cabinet-body">
+        <canvas id="game-canvas"></canvas>
+
+        <!-- ① ホーム画面オーバーレイ（案F：キルティングベルベット＆ぷっくりエナメル・クリスタル枠） -->
+        <div id="home-overlay" class="home-overlay">
+          <!-- 共通SVGグラデーション＆キルティングベルベットパターン定義 -->
+          <svg class="home-svg-defs" aria-hidden="true" width="0" height="0">
+            <defs>
+              <!-- パールシルバー立体金属グラデーション -->
+              <linearGradient id="plush-silver" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ffffff" />
+                <stop offset="22%" stop-color="#e2e8f0" />
+                <stop offset="48%" stop-color="#94a3b8" />
+                <stop offset="72%" stop-color="#f8fafc" />
+                <stop offset="100%" stop-color="#64748b" />
+              </linearGradient>
+              <linearGradient id="plush-silver-vert" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#ffffff" />
+                <stop offset="30%" stop-color="#cbd5e1" />
+                <stop offset="70%" stop-color="#64748b" />
+                <stop offset="100%" stop-color="#e2e8f0" />
+              </linearGradient>
+              <!-- ミルキーシアン＆サクラピンク発光グラデーション -->
+              <linearGradient id="plush-cyan-gem" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#e0f2fe" />
+                <stop offset="45%" stop-color="#38bdf8" />
+                <stop offset="100%" stop-color="#0284c7" />
+              </linearGradient>
+              <linearGradient id="plush-pink-gem" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#fce7f3" />
+                <stop offset="45%" stop-color="#f472b6" />
+                <stop offset="100%" stop-color="#be185d" />
+              </linearGradient>
+              <linearGradient id="plush-gold-ring" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#fef08a" />
+                <stop offset="45%" stop-color="#f59e0b" />
+                <stop offset="75%" stop-color="#fef9c3" />
+                <stop offset="100%" stop-color="#b45309" />
+              </linearGradient>
+
+
+            </defs>
+          </svg>
+
+          <!-- 案E：セレスティアル・アーチ型フレーム（宵闇ベルベット星空＆淡いミルキーパステルグラデーション） -->
+          <div class="home-card celestial-frame-card">
+            <!-- 外枠四隅の繊細なローズゴールド・ワイヤーフィリグリー（案E原画通り、アーチ外側のスパンドレル領域に配置） -->
+            <svg class="celestial-spandrel-svg" viewBox="0 0 400 740" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="rose-gold-wire" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#fce7f3" />
+                  <stop offset="35%" stop-color="#fbcfe8" />
+                  <stop offset="70%" stop-color="#f472b6" />
+                  <stop offset="100%" stop-color="#fde68a" />
+                </linearGradient>
+              </defs>
+              <!-- 左上スパンドレル：流麗な極細ワイヤー唐草 -->
+              <path d="M 18,85 C 18,40 40,18 85,18 M 28,78 C 28,45 45,28 78,28 M 38,68 C 38,50 50,38 68,38 M 22,46 C 35,46 42,38 46,22" fill="none" stroke="url(#rose-gold-wire)" stroke-width="1.3" opacity="0.8" />
+              <!-- 右上スパンドレル：対称の極細ワイヤー唐草 -->
+              <path d="M 382,85 C 382,40 360,18 315,18 M 372,78 C 372,45 355,28 322,28 M 362,68 C 362,50 350,38 332,38 M 378,46 C 365,46 358,38 354,22" fill="none" stroke="url(#rose-gold-wire)" stroke-width="1.3" opacity="0.8" />
+              <!-- 左下スパンドレル：控えめなコーナーカール -->
+              <path d="M 18,680 C 18,715 35,722 70,722 M 28,688 C 28,710 40,714 62,714" fill="none" stroke="url(#rose-gold-wire)" stroke-width="1.2" opacity="0.7" />
+              <!-- 右下スパンドレル：控えめなコーナーカール -->
+              <path d="M 382,680 C 382,715 365,722 330,722 M 372,688 C 372,710 360,714 338,714" fill="none" stroke="url(#rose-gold-wire)" stroke-width="1.2" opacity="0.7" />
+            </svg>
+
+            <!-- セレスティアル・アーチ型発光チューブ枠（全周を滑らかに巡る淡いミルキーグラデーション） -->
+            <div class="celestial-arch-tube-wrap">
+              <!-- 宵闇ベルベット星空の内装コンテナ -->
+              <div class="celestial-arch-interior">
+                <!-- 宵闇のベルベット星空SVG（星図・星座線・瞬くゴールドスター） -->
+                <svg class="celestial-nightsky-svg" viewBox="0 0 380 720" preserveAspectRatio="none" aria-hidden="true">
+                  <!-- 上部六芒星から広がる繊細なゴールド星座線（Constellation Lines） -->
+                  <g stroke="rgba(254, 240, 138, 0.22)" stroke-width="0.8" fill="none">
+                    <line x1="190" y1="46" x2="65" y2="70" />
+                    <line x1="65" y1="70" x2="35" y2="128" />
+                    <line x1="190" y1="46" x2="315" y2="70" />
+                    <line x1="315" y1="70" x2="345" y2="128" />
+                    <line x1="190" y1="46" x2="135" y2="108" />
+                    <line x1="190" y1="46" x2="245" y2="108" />
+                    <line x1="65" y1="70" x2="135" y2="108" />
+                    <line x1="315" y1="70" x2="245" y2="108" />
+                  </g>
+                  <!-- 星座の星ノード（ゴールドの小円） -->
+                  <g fill="#fef08a" opacity="0.85">
+                    <circle cx="65" cy="70" r="2.2" />
+                    <circle cx="35" cy="128" r="1.8" />
+                    <circle cx="315" cy="70" r="2.2" />
+                    <circle cx="345" cy="128" r="1.8" />
+                    <circle cx="135" cy="108" r="1.8" />
+                    <circle cx="245" cy="108" r="1.8" />
+                  </g>
+                  <!-- 宵闇に瞬くゴールドスター（✦ 4点星） -->
+                  <g fill="#fef08a">
+                    <!-- 上部星 -->
+                    <polygon points="50,165 52,170 57,172 52,174 50,179 48,174 43,172 48,170" opacity="0.65" />
+                    <polygon points="330,165 332,170 337,172 332,174 330,179 328,174 323,172 328,170" opacity="0.65" />
+                    <!-- 中段星屑 -->
+                    <polygon points="36,270 37.5,273 41,274.5 37.5,276 36,279 34.5,276 31,274.5 34.5,273" opacity="0.5" />
+                    <polygon points="344,270 345.5,273 349,274.5 345.5,276 344,279 342.5,276 339,274.5 342.5,273" opacity="0.5" />
+                    <!-- 下段星屑 -->
+                    <polygon points="42,430 44,434 48,435.5 44,437 42,441 40,437 36,435.5 40,434" opacity="0.55" />
+                    <polygon points="338,430 340,434 344,435.5 340,437 338,441 336,437 332,435.5 336,434" opacity="0.55" />
+                  </g>
+                  <!-- 微小なスターダスト（きらめく点） -->
+                  <g fill="#ffffff" opacity="0.45">
+                    <circle cx="95" cy="50" r="1.1" />
+                    <circle cx="285" cy="50" r="1.1" />
+                    <circle cx="85" cy="140" r="1.2" />
+                    <circle cx="295" cy="140" r="1.2" />
+                    <circle cx="48" cy="210" r="1.0" />
+                    <circle cx="332" cy="210" r="1.0" />
+                    <circle cx="58" cy="350" r="1.1" />
+                    <circle cx="322" cy="350" r="1.1" />
+                  </g>
+                </svg>
+
+                <!-- 水色＆ピンクの柔らかなセレスティアル光彩 -->
+                <div class="celestial-ambient-glow"></div>
+
+                <!-- 右上のぷっくりパール・サウンド切替ボタン -->
+                <button id="btn-home-sound" class="plush-sound-btn" title="サウンド切替">🔊</button>
+
+                <!-- 上部中央：アーチ頂点に配置された六芒星メダリオン -->
+                <div class="hexagram-medallion-wrap" title="六芒星解放状況">
+                  <div class="hexagram-emblem-box">
+                    <canvas id="home-hexagram-canvas" class="home-hexagram-canvas"></canvas>
+                    <div class="crystal-dome-gloss"></div>
+                  </div>
+                </div>
+
+              <!-- タイトルロゴ：参考画像に完全一致（クッキリ高発色パステル＆極細ゴールド縁＆立体知恵の輪2連リング） -->
+              <div class="home-logo-wrap">
+                <h1 class="home-title" aria-label="MEDALOOP">
+                  <svg class="medaloop-logo-svg" viewBox="0 0 330 70" role="img" aria-label="MEDALOOP">
+                    <defs>
+                      <!-- ベルベットに落ちる落ち着いたシャドウ（白飛びしない純粋なドロップシャドウ） -->
+                      <filter id="clean-logo-shadow" x="-10%" y="-15%" width="120%" height="135%">
+                        <feDropShadow dx="0" dy="2.5" stdDeviation="2.5" flood-color="rgba(5, 2, 12, 0.9)" />
+                      </filter>
+
+                      <!-- 上品で繊細な極細シャンパンゴールド縁取り用グラデーション -->
+                      <linearGradient id="fine-gold-rim" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#ffffff" />
+                        <stop offset="35%" stop-color="#fef08a" />
+                        <stop offset="70%" stop-color="#f59e0b" />
+                        <stop offset="100%" stop-color="#fef9c3" />
+                      </linearGradient>
+
+                      <!-- OO専用の立体シャンパンゴールドグラデーション（透き通るような明るい金属光沢） -->
+                      <linearGradient id="ring-gold-metal" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#fffde7" />
+                        <stop offset="30%" stop-color="#fef08a" />
+                        <stop offset="65%" stop-color="#facc15" />
+                        <stop offset="85%" stop-color="#eab308" />
+                        <stop offset="100%" stop-color="#ca8a04" />
+                      </linearGradient>
+
+                      <!-- 案E原画完全準拠：上品なアイボリー＆パールホワイトの柔らかな立体文字グラデーション -->
+                      <linearGradient id="pearl-ivory-letter" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#ffffff" />
+                        <stop offset="35%" stop-color="#fffde7" />
+                        <stop offset="70%" stop-color="#fef08a" />
+                        <stop offset="100%" stop-color="#fed7aa" />
+                      </linearGradient>
+
+                      <!-- 各文字のセンターライン（骨格パス）：穴がしっかり抜ける適正なプロポーション -->
+                      <path id="char-M-path" d="M 17,49 L 17,21 L 28,39 L 39,21 L 39,49" />
+                      <path id="char-E-path" d="M 74,21 L 56,21 L 56,49 L 74,49 M 56,35 L 70,35" />
+                      <path id="char-D-path" d="M 90,49 L 90,21 L 97,21 C 111,21 111,49 97,49 Z" />
+                      <path id="char-A-path" d="M 124,49 L 133.5,21 L 143,49 M 127.5,39 L 139.5,39" />
+                      <path id="char-L-path" d="M 158,21 L 158,49 L 174,49" />
+                      <path id="char-P-path" d="M 266,49 L 266,21 L 275,21 C 286,21 286,36 275,36 L 266,36" />
+                    </defs>
+
+                    <g filter="url(#clean-logo-shadow)" transform="translate(14, 0)">
+                      <!-- ================= 1. 極細シャンパンゴールド縁取り（下層：太さ11.6px＝差分1.0px） ================= -->
+                      <g fill="none" stroke="url(#fine-gold-rim)" stroke-width="11.6" stroke-linecap="round" stroke-linejoin="round">
+                        <use href="#char-M-path" />
+                        <use href="#char-E-path" />
+                        <use href="#char-D-path" />
+                        <use href="#char-A-path" />
+                        <use href="#char-L-path" />
+                        <!-- OOゴールドリング外枠 -->
+                        <circle cx="203" cy="35" r="17" stroke-width="8.4" />
+                        <circle cx="231" cy="35" r="17" stroke-width="8.4" />
+                        <use href="#char-P-path" />
+                      </g>
+
+                      <!-- ================= 2. 文字本体：案E原画準拠のアイボリー・パール立体グラデーション（太さ9.6px） ================= -->
+                      <!-- M -->
+                      <use href="#char-M-path" fill="none" stroke="url(#pearl-ivory-letter)" stroke-width="9.6" stroke-linecap="round" stroke-linejoin="round" />
+                      <!-- E -->
+                      <use href="#char-E-path" fill="none" stroke="url(#pearl-ivory-letter)" stroke-width="9.6" stroke-linecap="round" stroke-linejoin="round" />
+                      <!-- D -->
+                      <use href="#char-D-path" fill="none" stroke="url(#pearl-ivory-letter)" stroke-width="9.6" stroke-linecap="round" stroke-linejoin="round" />
+                      <!-- A -->
+                      <use href="#char-A-path" fill="none" stroke="url(#pearl-ivory-letter)" stroke-width="9.6" stroke-linecap="round" stroke-linejoin="round" />
+                      <!-- L -->
+                      <use href="#char-L-path" fill="none" stroke="url(#pearl-ivory-letter)" stroke-width="9.6" stroke-linecap="round" stroke-linejoin="round" />
+
+                      <!-- ================= 3. 中央の主役：立体知恵の輪交差ゴールド2連リング（OO） ================= -->
+                      <!-- 左リングベース（内径が広く向こう側が綺麗に抜ける） -->
+                      <circle cx="203" cy="35" r="17" fill="none" stroke="url(#ring-gold-metal)" stroke-width="6.4" />
+                      <!-- 右リングベース -->
+                      <circle cx="231" cy="35" r="17" fill="none" stroke="url(#ring-gold-metal)" stroke-width="6.4" />
+
+                      <!-- ★知恵の輪立体インターロック（本物のリング交差構造）★ -->
+                      <!-- ① 下側交差点（y ≈ 45）：右リングが手前を跨ぐ！ -->
+                      <!-- 右リングの落ち影（左リングに落ちるシャドウ） -->
+                      <path d="M 214,41 A 17,17 0 0 0 222,48" fill="none" stroke="rgba(5, 2, 14, 0.75)" stroke-width="8" stroke-linecap="round" />
+                      <!-- 右リング下側アーク本体（手前） -->
+                      <path d="M 213,37 A 17,17 0 0 0 224,49" fill="none" stroke="url(#fine-gold-rim)" stroke-width="8.4" stroke-linecap="round" />
+                      <path d="M 213,37 A 17,17 0 0 0 224,49" fill="none" stroke="url(#ring-gold-metal)" stroke-width="6.4" stroke-linecap="round" />
+
+                      <!-- ② 上側交差点（y ≈ 25）：左リングが手前を跨ぐ！ -->
+                      <!-- 左リングの落ち影（右リングに落ちるシャドウ） -->
+                      <path d="M 212,24 A 17,17 0 0 1 219,32" fill="none" stroke="rgba(5, 2, 14, 0.75)" stroke-width="8" stroke-linecap="round" />
+                      <!-- 左リング上側アーク本体（手前） -->
+                      <path d="M 210,21 A 17,17 0 0 1 220,33" fill="none" stroke="url(#fine-gold-rim)" stroke-width="8.4" stroke-linecap="round" />
+                      <path d="M 210,21 A 17,17 0 0 1 220,33" fill="none" stroke="url(#ring-gold-metal)" stroke-width="6.4" stroke-linecap="round" />
+
+                      <!-- リング表面のハイライト（パイプの丸みを強調する繊細な光沢線） -->
+                      <path d="M 191,27 A 15,15 0 0 1 211,23" fill="none" stroke="#fffbeb" stroke-width="1.3" opacity="0.8" stroke-linecap="round" />
+                      <path d="M 219,27 A 15,15 0 0 1 239,23" fill="none" stroke="#fffbeb" stroke-width="1.3" opacity="0.8" stroke-linecap="round" />
+
+                      <!-- P -->
+                      <use href="#char-P-path" fill="none" stroke="url(#pearl-ivory-letter)" stroke-width="9.6" stroke-linecap="round" stroke-linejoin="round" />
+
+                      <!-- ================= 4. 透明感を高める微細なガラス球面ハイライト（透明度32%の極細光沢） ================= -->
+                      <g fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.45">
+                        <use href="#char-M-path" />
+                        <use href="#char-E-path" />
+                        <use href="#char-D-path" />
+                        <use href="#char-A-path" />
+                        <use href="#char-L-path" />
+                        <use href="#char-P-path" />
+                      </g>
+                    </g>
+                  </svg>
+                </h1>
+              </div>
+
+              <!-- 100%完全制覇時に点灯するクリア記録バナー -->
+              <div id="home-clear-banner" class="home-clear-banner hidden">
+                <span class="clear-crown">👑 COMPLETE</span>
+                <span id="home-clear-detail" class="clear-detail">CLEAR TIME 00:00 / ROUND 1</span>
+              </div>
+
+              <!-- 3連アンティークシルバー＆フィリグリープレート（案E原画準拠） -->
+              <div class="home-stats-grid">
+                <div class="home-stat-item stat-cyan">
+                  <div class="plaque-side-ear left"></div>
+                  <div class="enamel-plate-inner">
+                    <div class="plaque-label-box">
+                      <span class="hs-label">所持ポイント</span>
+                    </div>
+                    <div class="plaque-val-box">
+                      <span id="home-score" class="hs-value cyan-text">0 PT</span>
+                    </div>
+                  </div>
+                  <div class="plaque-side-ear right"></div>
+                </div>
+                <div class="home-stat-item stat-gold">
+                  <div class="plaque-side-ear left"></div>
+                  <div class="enamel-plate-inner">
+                    <div class="plaque-label-box">
+                      <span class="hs-label">ベストスコア</span>
+                    </div>
+                    <div class="plaque-val-box">
+                      <span id="home-best-score" class="hs-value gold-text">0 PT</span>
+                    </div>
+                  </div>
+                  <div class="plaque-side-ear right"></div>
+                </div>
+                <div class="home-stat-item stat-pink">
+                  <div class="plaque-side-ear left"></div>
+                  <div class="enamel-plate-inner">
+                    <div class="plaque-label-box">
+                      <span class="hs-label">強化解放率</span>
+                    </div>
+                    <div class="plaque-val-box">
+                      <span id="home-completion" class="hs-value magenta-text">0%</span>
+                    </div>
+                  </div>
+                  <div class="plaque-side-ear right"></div>
+                </div>
+              </div>
+
+              <!-- 所持メダル（案E原画準拠：サロン風アーチ型木枠×シルバー・ジュエリーボックス、縦幅拡張仕様） -->
+              <div class="home-showcase-box celestial-jewelry-box">
+                <div class="showcase-header-pill">
+                  <span class="showcase-title">所持メダル</span>
+                </div>
+                <div class="jewelry-box-interior">
+                  <canvas id="home-medal-canvas" class="home-medal-canvas"></canvas>
+                  <!-- ボックス下部の木製ウォールナット台座モールディング -->
+                  <div class="jewelry-box-wood-base"></div>
+                </div>
+              </div>
+
+              <!-- 左右横並びのぷっくりカプセル型3Dエナメルボタン（添付画像1枚目準拠） -->
+              <div class="home-actions">
+                <button id="btn-start-play" class="neon-btn play-btn">
+                  <span class="crystal-btn-inner">
+                    <span class="crystal-btn-gloss"></span>
+                    <span class="btn-main-text play-text">プレイ</span>
+                  </span>
+                </button>
+                <button id="btn-open-tree" class="neon-btn tree-btn">
+                  <span class="crystal-btn-inner">
+                    <span class="crystal-btn-gloss"></span>
+                    <span class="btn-main-text tree-text">強化</span>
+                  </span>
+                  <span id="tree-notify-badge" class="notify-badge hidden">!</span>
+                </button>
+              </div>
+
+              <button id="btn-reset-save" class="reset-link-btn">セーブデータを初期化</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+        <!-- ② ラウンド終了リザルト画面オーバーレイ -->
+        <div id="result-overlay" class="home-overlay hidden">
+          <div class="home-card result-card">
+            <div class="neon-badge result-badge">ROUND FINISHED</div>
+            <h2 class="result-title">RESULT</h2>
+
+            <div class="result-main-score">
+              <span class="rms-label">獲得ポイント</span>
+              <span id="res-gained-score" class="rms-value">+0 PT</span>
+              <span id="res-total-score" class="rms-sub">所持合計: 0 PT</span>
+            </div>
+
+            <div class="result-stats-list">
+              <div class="res-row">
+                <span class="res-name">投入（装填）したメダル枚数</span>
+                <span id="res-inserted-count" class="res-val">0 枚</span>
+              </div>
+              <div class="res-row">
+                <span class="res-name">盤面へ投下したメダル枚数</span>
+                <span id="res-dropped-count" class="res-val">0 枚</span>
+              </div>
+              <div class="res-row">
+                <span class="res-name">スロット入賞枚数</span>
+                <span id="res-pocket-count" class="res-val">0 枚</span>
+              </div>
+              <div class="res-row">
+                <span class="res-name">バンパーヒット回数</span>
+                <span id="res-pin-hits" class="res-val">0 回</span>
+              </div>
+              <div class="res-row">
+                <span class="res-name">最大一撃スコア (MAX HIT)</span>
+                <span id="res-max-hit" class="res-val highlight-gold">+0 PT</span>
+              </div>
+              <div class="res-row">
+                <span class="res-name">ラウンド中増殖メダル数</span>
+                <span id="res-bonus-medals" class="res-val highlight-cyan">+0 枚</span>
+              </div>
+            </div>
+
+            <button id="btn-result-ok" class="neon-btn play-btn result-ok-btn">
+              <span class="crystal-btn-inner">
+                <span class="crystal-btn-gloss"></span>
+                <span class="btn-main-text">確認</span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ③ スキルツリー画面オーバーレイ（案1：セレスティアル・アストロロジー天球図） -->
+        <div id="tree-overlay" class="tree-overlay hidden">
+          <!-- 上部アーチ型セレスティアル・ヘッダーバー（解放率表示に集約） -->
+          <div class="tree-top-bar celestial-tree-header">
+            <div class="tree-header-main">
+              <span class="tree-brand-logo">MEDALOOP</span>
+              <div class="tree-progress-row">
+                <span class="tree-progress-label">強化解放率: <strong id="tree-completion">0%</strong></span>
+                <div class="progress-bar-bg celestial-progress-bg">
+                  <div id="tree-progress-fill" class="progress-bar-fill celestial-progress-fill"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- スキルツリー デバッグツールバー（全配置確認・テスト用） -->
+          <div class="tree-debug-bar">
+            <button id="btn-tree-debug-reveal" class="tree-debug-btn" title="全ノードの可視化切替">👁 全表示</button>
+            <button id="btn-tree-debug-max" class="tree-debug-btn" title="全ノードMAX解放/リセット">★ 全解放</button>
+            <button id="btn-tree-debug-pts" class="tree-debug-btn" title="+10,000 PT付与">+1万PT</button>
+          </div>
+
+          <!-- スキルツリー拡大縮小コントロール（ピンチイン・アウト補助） -->
+          <div class="tree-zoom-controls">
+            <button id="btn-tree-zoom-in" class="tree-zoom-btn" title="拡大">+</button>
+            <button id="btn-tree-zoom-reset" class="tree-zoom-btn reset-zoom" title="拡大率リセット">⟲</button>
+            <button id="btn-tree-zoom-out" class="tree-zoom-btn" title="縮小">−</button>
+          </div>
+
+          <!-- 下部詳細パネル（天体星図盤・コズミックタブレット） -->
+          <div id="node-detail-panel" class="node-detail-panel celestial-detail-drawer">
+            <div class="node-detail-header">
+              <div class="node-header-title-wrap">
+                <span id="node-title" class="node-title">ノードを選択</span>
+                <span id="node-level" class="node-level">Lv.0/1</span>
+              </div>
+              <div class="node-detail-wallet">
+                <span class="ndw-label">所持</span>
+                <strong id="tree-score" class="ndw-val">0 PT</strong>
+              </div>
+            </div>
+            <p id="node-desc" class="node-desc">ノードをタップすると詳細が表示されます。</p>
+            <div class="node-action-row">
+              <button id="btn-buy-node" class="btn-buy-cabochon" disabled>取得</button>
+              <button id="btn-tree-back-home" class="btn-home-cabochon">◀ ホーム</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
