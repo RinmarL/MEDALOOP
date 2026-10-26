@@ -334,6 +334,63 @@ class SoundManager {
       osc.stop(t + 0.9);
     });
   }
+
+  public playElectricSpark(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // バチバチッという電撃アーク（鋸歯状波の高速周波数ホップ＋短音ノイズ）
+    const sparkCount = 4;
+    for (let i = 0; i < sparkCount; i++) {
+      const t = now + i * 0.032 + Math.random() * 0.01;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      const freq = 1200 + Math.random() * 2200;
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(160, t + 0.038);
+
+      gain.gain.setValueAtTime(0.18, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.038);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.04);
+    }
+  }
+
+  public playTimeTick(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // 時計の針のカチッというウッドブロック風ギア音＋クリスタルレゾナンス
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1760, now);
+    osc.frequency.exponentialRampToValueAtTime(880, now + 0.04);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.09);
+
+    // 神秘的な高音ハーモニクス
+    const oscHarm = ctx.createOscillator();
+    const gainHarm = ctx.createGain();
+    oscHarm.type = 'sine';
+    oscHarm.frequency.setValueAtTime(3520, now + 0.02);
+    gainHarm.gain.setValueAtTime(0.12, now + 0.02);
+    gainHarm.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    oscHarm.connect(gainHarm);
+    gainHarm.connect(ctx.destination);
+    oscHarm.start(now + 0.02);
+    oscHarm.stop(now + 0.38);
+  }
 }
 
 export const sound = new SoundManager();

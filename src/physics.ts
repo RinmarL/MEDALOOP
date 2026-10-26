@@ -62,6 +62,9 @@ export interface PhysicsCallbacks {
   onJackpot?: () => void;
   onPocketToggleLamp?: (pocket: PocketSlot, lit: boolean) => void;
   onRailHit?: (medal: MedalEntity, rail: GuideRail) => void;
+  onPinElectrified?: (pin: PinEntity, medal: MedalEntity) => void;
+  onElectrifiedPinHit?: (pin: PinEntity, medal: MedalEntity, newMultiplier: number) => void;
+  onMedalElectrified?: (a: MedalEntity, b: MedalEntity) => void;
 }
 
 const LUCKY_RING_SPOTS = [
@@ -139,6 +142,7 @@ export class PhysicsWorld {
         baseScore: Math.round(stats.basePinScore * bumperMult),
         kind: 'bumper',
         hitAnim: 0,
+        electrifiedTimer: 0,
       });
     }
 
@@ -246,6 +250,7 @@ export class PhysicsWorld {
         baseScore: Math.round(stats.basePinScore * mult),
         kind: isBumper ? 'bumper' : 'normal',
         hitAnim: 0,
+        electrifiedTimer: 0,
       });
     });
 
@@ -381,6 +386,11 @@ export class PhysicsWorld {
     const vx = (Math.random() * 2 - 1) * INIT_VX_RANGE;
     const vy = INIT_VY;
 
+    let baseMult = 1.0;
+    if (type === 'gold' || type === 'chrono') baseMult = 3.0;
+    else if (type === 'plasma' || type === 'rush') baseMult = 2.0;
+    else if (type === 'bounce' || type === 'bonus') baseMult = 1.5;
+
     const medal: MedalEntity = {
       id: this.nextMedalId++,
       type,
@@ -390,7 +400,7 @@ export class PhysicsWorld {
       vy,
       radius: MEDAL_RADIUS,
       zone,
-      chargeMultiplier: 1.0,
+      chargeMultiplier: baseMult,
       contactFlash: 0,
       passedPocket: zone === 'tray',
       lastPinHitId: -1,
@@ -412,6 +422,9 @@ export class PhysicsWorld {
     for (const pin of this.pins) {
       if (pin.hitAnim > 0) {
         pin.hitAnim = Math.max(0, pin.hitAnim - clampedDelta * 4);
+      }
+      if (pin.electrifiedTimer > 0) {
+        pin.electrifiedTimer = Math.max(0, pin.electrifiedTimer - clampedDelta);
       }
     }
     for (const pocket of this.pockets) {
@@ -572,7 +585,7 @@ export class PhysicsWorld {
     for (let i = 0; i < n; i++) {
       const m = this.medals[i];
       if (m.zone === 'board') {
-        this.resolveBoardConstraints(m, callbacks);
+        this.resolveBoardConstraints(m, stats, callbacks);
       }
     }
 
@@ -683,10 +696,23 @@ export class PhysicsWorld {
     if (dist > 1e-6) {
       nx = dx / dist;
       ny = dy / dist;
+    } else {
+      // 完全に同一点に重なった場合の退避
+      nx = (a.id % 2 === 0 ? 1 : -1) * 0.707;
+      ny = 0.707;
+    }
+
+    // 縦直列（真上からの衝突）時のスタック・ジッター防止（左右に自然に滑り落とす）
+    if (Math.abs(nx) < 0.08) {
+      const dir = (a.id + b.id) % 2 === 0 ? 1 : -1;
+      nx = dir * 0.08;
+      ny = Math.sqrt(Math.max(0, 1 - nx * nx)) * (ny >= 0 ? 1 : -1);
     }
 
     const overlap = minDist - dist;
-    const push = overlap * 0.5;
+    // 剛体のめり込み補正：100%瞬時押し戻しだとピンとの間で押し合いジッター（小刻みな振動）を起こすため、
+    // 緩和係数（0.78）を掛けてスプリング的に滑らかに補正
+    const push = overlap * 0.5 * 0.78;
     a.x -= nx * push;
     a.y -= ny * push;
     b.x += nx * push;
@@ -702,16 +728,39 @@ export class PhysicsWorld {
 
     const relNormalSpeed = vAn - vBn;
 
-    if (stats.contactChargeRate > 0 && a.zone === 'board' && b.zone === 'board') {
-      const plasmaBoost = a.type === 'plasma' || b.type === 'plasma' ? 2.5 : 1.0;
-      const gain = stats.contactChargeRate * plasmaBoost * DT;
-      if (a.chargeMultiplier < stats.contactMaxMultiplier) {
-        a.chargeMultiplier = Math.min(stats.contactMaxMultiplier, a.chargeMultiplier + gain);
-        a.contactFlash = 0.6;
-      }
-      if (b.chargeMultiplier < stats.contactMaxMultiplier) {
-        b.chargeMultiplier = Math.min(stats.contactMaxMultiplier, b.chargeMultiplier + gain);
-        b.contactFlash = 0.6;
+    if (a.zone === 'board' && b.zone === 'board') {
+      const isPlasmaContact = a.type === 'plasma' || b.type === 'plasma';
+      if (isPlasmaContact) {
+        // プラズマメダル固有の帯電（スキルツリー未解放でも発動）
+        const getBase = (t: MedalType) => {
+          if (t === 'gold' || t === 'chrono') return 3.0;
+          if (t === 'plasma' || t === 'rush') return 2.0;
+          if (t === 'bounce' || t === 'bonus') return 1.5;
+          return 1.0;
+        };
+        const maxBonus = 1.5 + Math.max(0, stats.contactMaxMultiplier - 3.0);
+        const limitA = getBase(a.type) + maxBonus;
+        const limitB = getBase(b.type) + maxBonus;
+        const gain = 1.2 * DT;
+        if (a.chargeMultiplier < limitA) {
+          a.chargeMultiplier = Math.min(limitA, a.chargeMultiplier + gain);
+          a.contactFlash = 0.7;
+        }
+        if (b.chargeMultiplier < limitB) {
+          b.chargeMultiplier = Math.min(limitB, b.chargeMultiplier + gain);
+          b.contactFlash = 0.7;
+        }
+        callbacks.onMedalElectrified?.(a, b);
+      } else if (stats.contactChargeRate > 0) {
+        const gain = stats.contactChargeRate * DT;
+        if (a.chargeMultiplier < stats.contactMaxMultiplier) {
+          a.chargeMultiplier = Math.min(stats.contactMaxMultiplier, a.chargeMultiplier + gain);
+          a.contactFlash = 0.6;
+        }
+        if (b.chargeMultiplier < stats.contactMaxMultiplier) {
+          b.chargeMultiplier = Math.min(stats.contactMaxMultiplier, b.chargeMultiplier + gain);
+          b.contactFlash = 0.6;
+        }
       }
     }
 
@@ -759,7 +808,7 @@ export class PhysicsWorld {
     }
   }
 
-  private resolveBoardConstraints(m: MedalEntity, callbacks: PhysicsCallbacks): void {
+  private resolveBoardConstraints(m: MedalEntity, stats: ComputedStats, callbacks: PhysicsCallbacks): void {
     const r = m.radius;
 
     // 盤面ゾーンの左右外壁
@@ -823,6 +872,30 @@ export class PhysicsWorld {
             m.lastPinHitId = pin.id;
             m.pinHitCooldown = 0.09;
             pin.hitAnim = 1.0;
+
+            // ① プラズマメダル衝突時：ピンを3秒間帯電
+            if (m.type === 'plasma') {
+              pin.electrifiedTimer = 3.0;
+              callbacks.onPinElectrified?.(pin, m);
+            }
+
+            // ② 帯電ピン接触時：メダルの倍率を+0.2加算
+            if (pin.electrifiedTimer > 0) {
+              const getBase = (t: MedalType) => {
+                if (t === 'gold' || t === 'chrono') return 3.0;
+                if (t === 'plasma' || t === 'rush') return 2.0;
+                if (t === 'bounce' || t === 'bonus') return 1.5;
+                return 1.0;
+              };
+              const maxBonus = 1.5 + Math.max(0, stats.contactMaxMultiplier - 3.0);
+              const limit = getBase(m.type) + maxBonus;
+              if (m.chargeMultiplier < limit) {
+                m.chargeMultiplier = Math.min(limit, +(m.chargeMultiplier + 0.2).toFixed(2));
+                m.contactFlash = 0.8;
+                callbacks.onElectrifiedPinHit?.(pin, m, m.chargeMultiplier);
+              }
+            }
+
             callbacks.onPinHit(m, pin);
           }
         }

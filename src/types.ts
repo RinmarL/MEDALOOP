@@ -3,7 +3,7 @@ export type MedalType =
   | 'gold'
   | 'plasma'
   | 'bounce'
-  | 'clone'
+  | 'rush'
   | 'chrono'
   | 'bonus';
 
@@ -38,6 +38,7 @@ export interface PinEntity {
   baseScore: number;
   kind: 'normal' | 'bumper';
   hitAnim: number;
+  electrifiedTimer: number; // 帯電残り秒数（0なら通常、>0で帯電中）
 }
 
 export interface StopperBar {
@@ -137,6 +138,14 @@ export interface SlotInsertAnim {
   type: MedalType;
 }
 
+export interface LightningBolt {
+  id: number;
+  points: { x: number; y: number }[];
+  life: number; // 1.0 -> 0 (寿命減衰)
+  maxLife: number; // 0.12s
+  color: string;
+}
+
 export interface WarpEffect {
   x: number;
   y: number;
@@ -191,7 +200,7 @@ export interface ComputedStats {
   cloneRingLevel: number; // クローンオーブLv (0:未出現, 1:+1枚, 2:分裂メダル1.5倍, 3:+2枚)
   slotMultiplier: number; // スロット倍率強化 (1:通常, 2:x2, 4:x4)
   jpShotsCount: number; // JP射出枚数（初期10枚、jp_count_1:15枚、jp_count_2:20枚、jp_count_3:25枚）
-  jpNormalMedalRate: number; // JP時の通常メダル確率（初期0.70、jp_prob_1 Lv1:0.60, Lv2:0.50、jp_prob_2 Lv1:0.40, Lv2:0.30）
+  jpNormalMedalRate: number; // JP時の通常メダル確率（初期0.80、強化で0.70→0.60→0.50）
   jpFeverUnlocked: boolean; // JPフィーバー（5秒間全メダル得点2倍）
-  jpFreezeUnlocked: boolean; // JPロングフリーズ（1%で4.4秒演出＆50枚一斉投下）
+  jpFreezeUnlocked: boolean; // JPロングフリーズ（1%で4.4秒演出＆100枚一斉投下）
 }

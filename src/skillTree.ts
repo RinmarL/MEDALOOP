@@ -105,59 +105,59 @@ export const SKILL_NODES: SkillNodeDef[] = [
     icon: '🧲',
   },
 
-  // === 下方向：メダル変化 アンカー型配置（第2円→第3円→第4円へ等間隔直進＋第4円3並び） ===
+  // === 下方向：メダル変化 アンカー型配置（第2円→第3円→第4円へ等間隔直進＋第4円3並び円弧ルート） ===
   {
     id: 'medal_1',
-    name: 'ゴールドメダル変化',
-    description: '初期メダル1枚目をゴールドメダル（得点x3）に変化',
+    name: 'ラッシュメダル追加',
+    description: '初期メダルにラッシュメダル（得点x2・投下後即座に連射OK）を+1枚追加',
     ...polar(ORBIT_R2, 90),
     maxLevel: 1,
     baseCost: 70,
     costScale: 1,
     neighbors: ['r1_3', 'medal_2'],
     category: 'medal',
-    icon: '🪙',
+    icon: '💨',
   },
   {
     id: 'medal_2',
-    name: 'プラズマメダル変化',
-    description: '初期メダル2枚目をプラズマメダル（得点x2・接触帯電2.5倍）に変化',
+    name: 'バウンスメダル追加',
+    description: '初期メダルにバウンスメダル（バンパー得点x4・高反発）を+1枚追加',
     ...polar(ORBIT_R3, 90),
     maxLevel: 1,
     baseCost: 180,
     costScale: 1,
-    neighbors: ['medal_1', 'star_3'],
-    category: 'medal',
-    icon: '🔮',
-  },
-  {
-    id: 'medal_3',
-    name: 'バウンスメダル変化',
-    description: '初期メダル3枚目をバウンスメダル（バンパー得点x4・高反発）に変化',
-    ...polar(ORBIT_R4, 108),
-    maxLevel: 1,
-    baseCost: 360,
-    costScale: 1,
-    neighbors: ['star_3'],
+    neighbors: ['medal_1', 'medal_3'],
     category: 'medal',
     icon: '💥',
   },
   {
+    id: 'medal_3',
+    name: 'ゴールドメダル追加',
+    description: '初期メダルにゴールドメダル（得点x3）を+1枚追加',
+    ...polar(ORBIT_R4, 108),
+    maxLevel: 1,
+    baseCost: 360,
+    costScale: 1,
+    neighbors: ['medal_2', 'star_3'],
+    category: 'medal',
+    icon: '🪙',
+  },
+  {
     id: 'star_3',
-    name: 'クローンメダル変化',
-    description: '初期メダル4枚目をクローンメダル（スロット入賞時メダル+1枚）に変化',
+    name: 'プラズマメダル追加',
+    description: '初期メダルにプラズマメダル（得点x2・接触ピンを3秒帯電させて通過メダル倍率+0.2加算）を+1枚追加',
     ...polar(ORBIT_R4, 90),
     maxLevel: 1,
     baseCost: 580,
     costScale: 1,
-    neighbors: ['medal_2', 'medal_3', 'medal_5'],
+    neighbors: ['medal_3', 'medal_5'],
     category: 'medal',
-    icon: '🧬',
+    icon: '🔮',
   },
   {
     id: 'medal_5',
-    name: 'クロノメダル変化',
-    description: '初期メダル5枚目をクロノメダル（得点x3・入賞時+1.2秒）に変化',
+    name: 'クロノメダル追加',
+    description: '初期メダルにクロノメダル（得点x3・入賞時+0.8秒）を+1枚追加',
     ...polar(ORBIT_R4, 72),
     maxLevel: 1,
     baseCost: 920,
@@ -171,7 +171,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'jp_prob_1',
     name: 'JP特殊確率 I',
-    description: 'JACKPOT時の特殊メダル出現率UP（通常70%→Lv1:60%/Lv2:50%）',
+    description: 'JACKPOT時の特殊メダル出現率UP（通常80%→Lv1:70%/Lv2:60%）',
     ...polar(ORBIT_R2, -90),
     maxLevel: 2,
     baseCost: 120,
@@ -195,9 +195,9 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'jp_prob_2',
     name: 'JP特殊確率 II',
-    description: 'JACKPOT時の特殊メダル出現率UP（通常50%→Lv1:40%/Lv2:30%）',
+    description: 'JACKPOT時の特殊メダル出現率UP（通常60%→Lv1:50% MAX）',
     ...polar(ORBIT_R3, -108),
-    maxLevel: 2,
+    maxLevel: 1,
     baseCost: 350,
     costScale: 1.8,
     neighbors: ['jp_count_1', 'jp_count_2'],
@@ -219,7 +219,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'jp_freeze',
     name: 'JPロングフリーズ',
-    description: 'JACKPOT突入時1%で暗転フリーズ！50枚一気放出プレミアム演出',
+    description: 'JACKPOT突入時1%で暗転フリーズ！100枚一気放出プレミアム演出',
     ...polar(ORBIT_R4, -126),
     maxLevel: 1,
     baseCost: 800,
@@ -608,13 +608,13 @@ export class SkillTreeState {
 
     const centerSlot4xUnlocked = lv('c0') > 0;
 
-    // 初期5枚のメダル構成
+    // 通常メダル5枚は常に維持し、特殊メダルノード解放で1枚ずつ純増（全解放で計10枚運用）
     const specialMedals: MedalType[] = ['normal', 'normal', 'normal', 'normal', 'normal'];
-    if (lv('medal_1') > 0) specialMedals[0] = 'gold';
-    if (lv('medal_2') > 0) specialMedals[1] = 'plasma';
-    if (lv('medal_3') > 0) specialMedals[2] = 'bounce';
-    if (lv('star_3') > 0) specialMedals[3] = 'clone';
-    if (lv('medal_5') > 0) specialMedals[4] = 'chrono';
+    if (lv('medal_1') > 0) specialMedals.push('rush');
+    if (lv('medal_2') > 0) specialMedals.push('bounce');
+    if (lv('medal_3') > 0) specialMedals.push('gold');
+    if (lv('star_3') > 0) specialMedals.push('plasma');
+    if (lv('medal_5') > 0) specialMedals.push('chrono');
 
     // 投下クールタイム（初期 1.0秒）
     let dropCooldown = 1.0;
@@ -716,14 +716,13 @@ export class SkillTreeState {
     if (lv('jp_count_2') > 0) jpShotsCount = 20;
     if (lv('jp_count_3') > 0) jpShotsCount = 25;
 
-    // JP特殊メダル通常率（デフォルト0.70、jp_prob_1 Lv1:0.60, Lv2:0.50、jp_prob_2 Lv1:0.40, Lv2:0.30）
-    let jpNormalMedalRate = 0.7;
+    // JP特殊メダル通常率（デフォルト0.80、jp_prob_1 Lv1:0.70, Lv2:0.60、jp_prob_2 Lv1:0.50）
+    let jpNormalMedalRate = 0.8;
     const prob1 = lv('jp_prob_1');
     const prob2 = lv('jp_prob_2');
-    if (prob1 === 1) jpNormalMedalRate = 0.6;
-    else if (prob1 >= 2) jpNormalMedalRate = 0.5;
-    if (prob2 === 1) jpNormalMedalRate = 0.4;
-    else if (prob2 >= 2) jpNormalMedalRate = 0.3;
+    if (prob1 === 1) jpNormalMedalRate = 0.7;
+    else if (prob1 >= 2) jpNormalMedalRate = 0.6;
+    if (prob2 >= 1) jpNormalMedalRate = 0.5;
 
     return {
       centerSlot4xUnlocked,

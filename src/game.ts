@@ -28,6 +28,7 @@ import { sound } from './sound';
 import {
   ComputedStats,
   FloatingText,
+  LightningBolt,
   LuckyRing,
   MedalEntity,
   MedalType,
@@ -73,12 +74,12 @@ const MEDAL_STYLE: Record<
     trail: 'rgba(244, 63, 94, 0.75)',
     label: '💥',
   },
-  clone: {
-    c1: '#a7f3d0',
-    c2: '#059669',
-    rim: '#d1fae5',
-    trail: 'rgba(16, 185, 129, 0.75)',
-    label: '+1',
+  rush: {
+    c1: '#38bdf8',
+    c2: '#0284c7',
+    rim: '#e0f2fe',
+    trail: 'rgba(56, 189, 248, 0.75)',
+    label: '💨',
   },
   chrono: {
     c1: '#e0e7ff',
@@ -160,6 +161,7 @@ export class MedalGame {
   private pickupParticles: PickupParticle[] = [];
   private slotInsertAnims: SlotInsertAnim[] = [];
   private warpEffects: WarpEffect[] = [];
+  private lightningBolts: LightningBolt[] = [];
 
   // JACKPOTフィーバー演出管理
   private jackpotBannerTimer: number = 0;
@@ -177,10 +179,23 @@ export class MedalGame {
   private jackpotFreezeTimer: number = 0; // 0〜4.4秒
   private freezeStockMedals: Array<{ x: number; y: number; type: MedalType }> = [];
 
-  // ホーム画面3Dコイン手触り跳ねギミック用
+  // ホーム画面3Dコイン手触り跳ねギミック＆固有演出用
   private homeCoinHopOffsets: number[] = [0, 0, 0, 0, 0, 0];
   private homeCoinHopVels: number[] = [0, 0, 0, 0, 0, 0];
-  private homeShowcasePopup: { text: string; x: number; alpha: number } | null = null;
+  private homeNormalStackOffsets: number[] = [0, 0, 0, 0, 0];
+  private homeNormalStackVels: number[] = [0, 0, 0, 0, 0];
+  private homeShowcaseEffects: Array<{
+    type: MedalType;
+    x: number;
+    y: number;
+    timer: number;
+    maxTimer: number;
+    bolts?: Array<Array<{ x: number; y: number }>>;
+    sparkles?: Array<{ x: number; y: number; vx: number; vy: number; size: number; alpha: number; color: string }>;
+    shockwaveRadius?: number;
+    chronoAngle?: number;
+    rushLines?: Array<{ x: number; y: number; length: number; alpha: number }>;
+  }> = [];
 
   // DOM要素
   private elCabinetHeader = document.getElementById('cabinet-header')!;
@@ -833,21 +848,21 @@ export class MedalGame {
     ctx.fill();
 
     for (let s = 0; s < stackPreview; s++) {
-      // 上の段ほど大きく跳ねる手触り演出
-      const hopScale = 0.55 + (s / Math.max(1, stackPreview - 1)) * 0.55;
-      this.draw3DTrayCoin(ctx, nx, 54 - s * 5.8 + normalHop * hopScale, 17, 'normal');
+      // 5枚スタックが時間差で小気味よく波打つウェーブ跳ね
+      const stackHop = this.homeNormalStackOffsets[s] || normalHop;
+      this.draw3DTrayCoin(ctx, nx, 54 - s * 5.8 + stackHop, 17, 'normal');
     }
     ctx.fillStyle = '#fde68a';
     ctx.font = 'bold 10.5px Consolas, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`×${normalCount}`, nx, h - 7);
 
-    // 特殊メダル5種のスロット（GOLD, PLASMA, BOUNCE, CLONE, CHRONO）
+    // 特殊メダル5種のスロット（RUSH, BOUNCE, GOLD, PLASMA, CHRONO）
     const specialSlots: { type: MedalType; name: string }[] = [
+      { type: 'rush', name: 'RUSH' },
+      { type: 'bounce', name: 'BOUNCE' },
       { type: 'gold', name: 'GOLD' },
       { type: 'plasma', name: 'PLASMA' },
-      { type: 'bounce', name: 'BOUNCE' },
-      { type: 'clone', name: 'CLONE' },
       { type: 'chrono', name: 'CHRONO' },
     ];
 
@@ -863,7 +878,25 @@ export class MedalGame {
         ctx.ellipse(sx, 62, 19, 8, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        this.draw3DTrayCoin(ctx, sx, sy, 18, slot.type);
+        // メダル固有のビジュアル変形（バウンスのスカッシュ＆ストレッチ、プラズマの帯電ジッター）
+        if (slot.type === 'bounce' && hopY < 0) {
+          ctx.save();
+          const squash = Math.sin(Math.min(1, -hopY / 22) * Math.PI) * 0.16;
+          ctx.translate(sx, sy);
+          ctx.scale(1 + squash * 0.8, 1 - squash);
+          this.draw3DTrayCoin(ctx, 0, 0, 18, slot.type);
+          ctx.restore();
+        } else if (
+          slot.type === 'plasma' &&
+          (hopY < 0 || this.homeShowcaseEffects.some((e) => e.type === 'plasma'))
+        ) {
+          const jx = (Math.random() - 0.5) * 2.6;
+          const jy = (Math.random() - 0.5) * 2.0;
+          this.draw3DTrayCoin(ctx, sx + jx, sy + jy, 18, slot.type);
+        } else {
+          this.draw3DTrayCoin(ctx, sx, sy, 18, slot.type);
+        }
+
         ctx.fillStyle = '#bae6fd';
         ctx.font = 'bold 9.5px Consolas, sans-serif';
         ctx.textAlign = 'center';
@@ -892,39 +925,107 @@ export class MedalGame {
       }
     });
 
-    // タップ時のミニ効果ラベルポップアップ
-    if (this.homeShowcasePopup && this.homeShowcasePopup.alpha > 0) {
-      const p = this.homeShowcasePopup;
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, p.alpha);
-      const px = Math.max(88, Math.min(w - 88, p.x));
-      ctx.fillStyle = 'rgba(20, 10, 40, 0.96)';
-      ctx.strokeStyle = '#7dd3fc';
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.roundRect(px - 86, 4, 172, 18, 9);
-      ctx.fill();
-      ctx.stroke();
+    // ショーケース専用の動的エフェクト描画（電撃アーク、黄金星屑、ピンク波紋、時計ギア等）
+    for (const eff of this.homeShowcaseEffects) {
+      if (eff.type === 'plasma' && eff.bolts) {
+        // プラズマ：紫＆水色のギザギザ稲妻アーク
+        ctx.save();
+        const alpha = Math.min(1, eff.timer / (eff.maxTimer * 0.7));
+        for (const bolt of eff.bolts) {
+          if (bolt.length < 2) continue;
+          ctx.strokeStyle = `rgba(192, 132, 252, ${alpha * 0.85})`;
+          ctx.lineWidth = 3.2;
+          ctx.beginPath();
+          ctx.moveTo(bolt[0].x, bolt[0].y);
+          for (let p = 1; p < bolt.length; p++) ctx.lineTo(bolt[p].x, bolt[p].y);
+          ctx.stroke();
 
-      ctx.fillStyle = '#fef08a';
-      ctx.font = 'bold 9.5px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(p.text, px, 13);
-      ctx.restore();
+          ctx.strokeStyle = `rgba(240, 249, 255, ${alpha})`;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(bolt[0].x, bolt[0].y);
+          for (let p = 1; p < bolt.length; p++) ctx.lineTo(bolt[p].x, bolt[p].y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if (eff.type === 'gold' && eff.sparkles) {
+        // ゴールド：ゴールド星屑スパークル（✦）
+        ctx.save();
+        for (const sp of eff.sparkles) {
+          ctx.fillStyle = sp.color;
+          ctx.globalAlpha = Math.max(0, sp.alpha);
+          const r = sp.size;
+          ctx.beginPath();
+          ctx.moveTo(sp.x, sp.y - r * 1.5);
+          ctx.quadraticCurveTo(sp.x, sp.y, sp.x + r * 1.5, sp.y);
+          ctx.quadraticCurveTo(sp.x, sp.y, sp.x, sp.y + r * 1.5);
+          ctx.quadraticCurveTo(sp.x, sp.y, sp.x - r * 1.5, sp.y);
+          ctx.quadraticCurveTo(sp.x, sp.y, sp.x, sp.y - r * 1.5);
+          ctx.fill();
+        }
+        ctx.restore();
+      } else if (eff.type === 'bounce' && eff.shockwaveRadius !== undefined) {
+        // バウンス：ピンクの衝撃波紋リング
+        ctx.save();
+        const alpha = Math.max(0, eff.timer / eff.maxTimer);
+        ctx.strokeStyle = `rgba(244, 114, 182, ${alpha * 0.85})`;
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.ellipse(eff.x, 62, eff.shockwaveRadius * 1.35, eff.shockwaveRadius * 0.58, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      } else if (eff.type === 'rush' && eff.rushLines) {
+        // ラッシュ：シアンの垂直スピードライン（疾風）
+        ctx.save();
+        const alpha = Math.max(0, eff.timer / eff.maxTimer);
+        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 0.9})`;
+        ctx.lineWidth = 1.8;
+        for (const line of eff.rushLines) {
+          ctx.beginPath();
+          ctx.moveTo(line.x, line.y);
+          ctx.lineTo(line.x, line.y - line.length);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if (eff.type === 'chrono' && eff.chronoAngle !== undefined) {
+        // クロノ：黄金の時計文字盤サークル＆回転秒針
+        ctx.save();
+        const alpha = Math.min(1, eff.timer / (eff.maxTimer * 0.5));
+        ctx.globalAlpha = alpha;
+        const cx = eff.x;
+        const cy = 46;
+        const r = 24;
+
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.75)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        for (let i = 0; i < 12; i++) {
+          const a = (i / 12) * Math.PI * 2;
+          const innerR = i % 3 === 0 ? r - 4.5 : r - 2.5;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * innerR, cy + Math.sin(a) * innerR);
+          ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(eff.chronoAngle) * (r - 5), cy + Math.sin(eff.chronoAngle) * (r - 5));
+        ctx.stroke();
+
+        ctx.restore();
+      }
     }
   }
 
   private handleHomeShowcaseTap(lx: number): void {
     const slotCenters = [38, 98, 150, 202, 254, 306];
-    const slotEffects: { type: MedalType; desc: string }[] = [
-      { type: 'normal', desc: 'NORMAL: 基礎メダル (1 PT)' },
-      { type: 'gold', desc: 'GOLD: 基礎得点 ×3' },
-      { type: 'plasma', desc: 'PLASMA: 接触倍率上昇 ×2.5' },
-      { type: 'bounce', desc: 'BOUNCE: 高反発＆バンパー×2.8' },
-      { type: 'clone', desc: 'CLONE: 入賞時にメダル増殖' },
-      { type: 'chrono', desc: 'CHRONO: 得点×3＆時間+1.2秒' },
-    ];
+    const slotTypes: MedalType[] = ['normal', 'rush', 'bounce', 'gold', 'plasma', 'chrono'];
 
     let bestIdx = 0;
     let bestDist = Infinity;
@@ -937,46 +1038,255 @@ export class MedalGame {
     }
     if (bestDist > 32) return;
 
-    const info = slotEffects[bestIdx];
+    const type = slotTypes[bestIdx];
     const unlocked =
-      bestIdx === 0 || this.stats.specialMedals.includes(info.type);
+      bestIdx === 0 || this.stats.specialMedals.includes(type);
 
-    this.homeCoinHopVels[bestIdx] = unlocked ? -135 : -65;
-    this.homeShowcasePopup = {
-      text: unlocked ? info.desc : '未解放: スキルツリーで解放',
-      x: slotCenters[bestIdx],
-      alpha: 1.6,
-    };
-
-    if (unlocked) {
-      sound.playPickup();
-    } else {
+    if (!unlocked) {
+      // 未解放時はカチッと小さく震えるだけ
+      this.homeCoinHopVels[bestIdx] = -90;
       sound.playMedalClink(0.25);
+      this.renderHomeMedalShowcase();
+      return;
     }
+
+    const sx = slotCenters[bestIdx];
+    const sy = 46;
+
+    // 各メダルごとの固有挙動と専用サウンド＆エフェクト
+    switch (type) {
+      case 'normal': {
+        // 通常メダルスタック：上から順にカチャチャチャッと時間差ウェーブ跳ね
+        this.homeCoinHopVels[0] = -240;
+        for (let s = 0; s < this.homeNormalStackVels.length; s++) {
+          this.homeNormalStackVels[s] = -190 - s * 22;
+        }
+        sound.playMedalClink(0.85);
+        break;
+      }
+      case 'rush': {
+        // ラッシュメダル：超俊敏な垂直ハイスピード突き上がり＆シアンの疾風スピードライン
+        this.homeCoinHopVels[bestIdx] = -380;
+        sound.playLaserSplit();
+
+        const lines = [];
+        for (let l = 0; l < 6; l++) {
+          lines.push({
+            x: sx + (Math.random() - 0.5) * 28,
+            y: sy + 10 + Math.random() * 15,
+            length: 12 + Math.random() * 14,
+            alpha: 1.0,
+          });
+        }
+        this.homeShowcaseEffects.push({
+          type: 'rush',
+          x: sx,
+          y: sy,
+          timer: 0.35,
+          maxTimer: 0.35,
+          rushLines: lines,
+        });
+        break;
+      }
+      case 'bounce': {
+        // バウンスメダル：高反発「ボヨヨン！」連続バウンド＆ピンク波紋
+        this.homeCoinHopVels[bestIdx] = -320;
+        sound.playPinHit(true);
+
+        this.homeShowcaseEffects.push({
+          type: 'bounce',
+          x: sx,
+          y: sy,
+          timer: 0.45,
+          maxTimer: 0.45,
+          shockwaveRadius: 4,
+        });
+        break;
+      }
+      case 'gold': {
+        // ゴールドメダル：黄金フラッシュ＆キラキラ星屑・ゴールドスパークル散布
+        this.homeCoinHopVels[bestIdx] = -260;
+        sound.playUpgrade(true);
+
+        const sparkles = [];
+        for (let k = 0; k < 12; k++) {
+          const angle = (k / 12) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+          const speed = 40 + Math.random() * 65;
+          sparkles.push({
+            x: sx,
+            y: sy,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 20,
+            size: 2.2 + Math.random() * 2.2,
+            alpha: 1.0,
+            color: k % 2 === 0 ? '#fef08a' : '#f59e0b',
+          });
+        }
+        this.homeShowcaseEffects.push({
+          type: 'gold',
+          x: sx,
+          y: sy,
+          timer: 0.55,
+          maxTimer: 0.55,
+          sparkles,
+        });
+        break;
+      }
+      case 'plasma': {
+        // プラズマメダル：バチバチッ！と紫＆水色のギザギザ稲妻アークが全方位＆隣接メダルへ放電！
+        this.homeCoinHopVels[bestIdx] = -270;
+        sound.playElectricSpark();
+
+        const bolts: Array<Array<{ x: number; y: number }>> = [];
+        const leftTargetX = slotCenters[bestIdx - 1];
+        const rightTargetX = slotCenters[bestIdx + 1];
+
+        const generateBolt = (x1: number, y1: number, x2: number, y2: number, segments: number) => {
+          const pts = [{ x: x1, y: y1 }];
+          for (let seg = 1; seg < segments; seg++) {
+            const t = seg / segments;
+            const bx = x1 + (x2 - x1) * t;
+            const by = y1 + (y2 - y1) * t;
+            const perpX = -(y2 - y1);
+            const perpY = x2 - x1;
+            const len = Math.hypot(perpX, perpY) || 1;
+            const jitter = (Math.random() - 0.5) * 16;
+            pts.push({
+              x: bx + (perpX / len) * jitter,
+              y: by + (perpY / len) * jitter,
+            });
+          }
+          pts.push({ x: x2, y: y2 });
+          return pts;
+        };
+
+        if (leftTargetX !== undefined) {
+          bolts.push(generateBolt(sx - 14, sy, leftTargetX + 14, sy, 5));
+        }
+        if (rightTargetX !== undefined) {
+          bolts.push(generateBolt(sx + 14, sy, rightTargetX - 14, sy, 5));
+        }
+
+        for (let b = 0; b < 5; b++) {
+          const ang = (b / 5) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+          const dist = 18 + Math.random() * 16;
+          const ex = sx + Math.cos(ang) * dist;
+          const ey = sy + Math.sin(ang) * dist;
+          bolts.push(generateBolt(sx, sy, ex, ey, 4));
+        }
+
+        this.homeShowcaseEffects.push({
+          type: 'plasma',
+          x: sx,
+          y: sy,
+          timer: 0.42,
+          maxTimer: 0.42,
+          bolts,
+        });
+        break;
+      }
+      case 'chrono': {
+        // クロノメダル：黄金の時計文字盤・ギアサークル出現 ＆ タイム浮遊スピン
+        this.homeCoinHopVels[bestIdx] = -280;
+        sound.playTimeTick();
+
+        this.homeShowcaseEffects.push({
+          type: 'chrono',
+          x: sx,
+          y: sy,
+          timer: 0.6,
+          maxTimer: 0.6,
+          chronoAngle: 0,
+        });
+        break;
+      }
+    }
+
     this.renderHomeMedalShowcase();
   }
 
   private updateHomeShowcaseAnim(dtSec: number): void {
     let active = false;
+
+    // メダルごとの重力・跳ね返り係数（重さを完全解消し、シャープでキレのあるスナッピーな反発を実現）
+    const gravityList = [2400, 3600, 1900, 2100, 2200, 2100];
+    const bounceList = [0.35, 0.25, 0.68, 0.38, 0.35, 0.32];
+
     for (let i = 0; i < this.homeCoinHopOffsets.length; i++) {
       if (this.homeCoinHopOffsets[i] < 0 || this.homeCoinHopVels[i] !== 0) {
         active = true;
-        this.homeCoinHopVels[i] += 520 * dtSec;
-        this.homeCoinHopOffsets[i] += this.homeCoinHopVels[i] * dtSec;
+        const g = gravityList[i] || 2200;
+        const b = bounceList[i] || 0.35;
+
+        let currentDt = dtSec;
+        if (i === 5 && Math.abs(this.homeCoinHopVels[i]) < 60 && this.homeCoinHopOffsets[i] < -8) {
+          currentDt *= 0.35; // クロノのみ空中タイム浮遊
+        }
+
+        this.homeCoinHopVels[i] += g * currentDt;
+        this.homeCoinHopOffsets[i] += this.homeCoinHopVels[i] * currentDt;
+
         if (this.homeCoinHopOffsets[i] >= 0) {
           this.homeCoinHopOffsets[i] = 0;
-          if (Math.abs(this.homeCoinHopVels[i]) > 45) {
-            this.homeCoinHopVels[i] = -this.homeCoinHopVels[i] * 0.32;
+          if (Math.abs(this.homeCoinHopVels[i]) > 40) {
+            this.homeCoinHopVels[i] = -this.homeCoinHopVels[i] * b;
           } else {
             this.homeCoinHopVels[i] = 0;
           }
         }
       }
     }
-    if (this.homeShowcasePopup && this.homeShowcasePopup.alpha > 0) {
-      active = true;
-      this.homeShowcasePopup.alpha = Math.max(0, this.homeShowcasePopup.alpha - dtSec * 0.9);
+
+    // 通常メダルスタックの各段ウェーブ更新
+    for (let s = 0; s < this.homeNormalStackOffsets.length; s++) {
+      if (this.homeNormalStackOffsets[s] < 0 || this.homeNormalStackVels[s] !== 0) {
+        active = true;
+        this.homeNormalStackVels[s] += 2400 * dtSec;
+        this.homeNormalStackOffsets[s] += this.homeNormalStackVels[s] * dtSec;
+        if (this.homeNormalStackOffsets[s] >= 0) {
+          this.homeNormalStackOffsets[s] = 0;
+          if (Math.abs(this.homeNormalStackVels[s]) > 40) {
+            this.homeNormalStackVels[s] = -this.homeNormalStackVels[s] * 0.35;
+          } else {
+            this.homeNormalStackVels[s] = 0;
+          }
+        }
+      }
     }
+
+    // エフェクトの更新
+    for (let eIdx = this.homeShowcaseEffects.length - 1; eIdx >= 0; eIdx--) {
+      active = true;
+      const eff = this.homeShowcaseEffects[eIdx];
+      eff.timer -= dtSec;
+
+      if (eff.type === 'bounce' && eff.shockwaveRadius !== undefined) {
+        eff.shockwaveRadius += 65 * dtSec;
+      } else if (eff.type === 'chrono' && eff.chronoAngle !== undefined) {
+        eff.chronoAngle += 3.8 * dtSec;
+      } else if (eff.type === 'gold' && eff.sparkles) {
+        for (const sp of eff.sparkles) {
+          sp.x += sp.vx * dtSec;
+          sp.y += sp.vy * dtSec;
+          sp.vy += 120 * dtSec;
+          sp.alpha = Math.max(0, eff.timer / eff.maxTimer);
+        }
+      } else if (eff.type === 'plasma' && eff.bolts) {
+        if (Math.random() < 0.35) {
+          for (const bolt of eff.bolts) {
+            for (let p = 1; p < bolt.length - 1; p++) {
+              bolt[p].x += (Math.random() - 0.5) * 3;
+              bolt[p].y += (Math.random() - 0.5) * 3;
+            }
+          }
+        }
+      }
+
+      if (eff.timer <= 0) {
+        this.homeShowcaseEffects.splice(eIdx, 1);
+      }
+    }
+
     if (active) {
       this.renderHomeMedalShowcase();
     }
@@ -1025,6 +1335,7 @@ export class MedalGame {
     this.pickupParticles = [];
     this.slotInsertAnims = [];
     this.warpEffects = [];
+    this.lightningBolts = [];
 
     this.physics.medals = [];
     this.physics.setupBoard(this.stats);
@@ -1198,9 +1509,18 @@ export class MedalGame {
     }
 
     const medalType = this.loadedQueue.shift()!;
-    this.physics.spawnMedal(x, 54, medalType, 'board');
+    // ラッシュ等の連続投下時に完全縦直列衝突でスタック・振動するのを防ぐため、微細な自然の横オフセットを付与
+    const dropX = x + (Math.random() - 0.5) * 3.6;
+    this.physics.spawnMedal(dropX, 54, medalType, 'board');
     this.roundDroppedCount++;
-    this.dropCooldownTimer = this.stats.dropCooldown;
+
+    if (medalType === 'rush') {
+      // ラッシュメダル：投下クールダウン即時ゼロで連続投下可能！
+      this.dropCooldownTimer = 0;
+      sound.playLaserSplit();
+    } else {
+      this.dropCooldownTimer = this.stats.dropCooldown;
+    }
     sound.playDrop();
   }
 
@@ -1208,14 +1528,14 @@ export class MedalGame {
     switch (type) {
       case 'gold':
         return 3.0;
+      case 'chrono':
+        return 3.0;
       case 'plasma':
+        return 2.0;
+      case 'rush':
         return 2.0;
       case 'bounce':
         return 1.5;
-      case 'clone':
-        return 1.5;
-      case 'chrono':
-        return 3.0;
       case 'bonus':
         return 1.5;
       default:
@@ -1232,10 +1552,10 @@ export class MedalGame {
       return;
     }
 
-    const typeMult = this.getMedalBaseScoreMult(medal.type) * (medal.type === 'bounce' ? 2.8 : 1.0);
+    const bounceMult = medal.type === 'bounce' && pin.kind === 'bumper' ? 2.8 : 1.0;
     const feverMult = this.jpFeverTimer > 0 ? 2.0 : 1.0;
     const raw =
-      pin.baseScore * typeMult * medal.chargeMultiplier * this.stats.globalScoreMultiplier * feverMult;
+      pin.baseScore * medal.chargeMultiplier * bounceMult * this.stats.globalScoreMultiplier * feverMult;
     const gained = Math.max(1, Math.round(raw));
 
     this.score += gained;
@@ -1258,12 +1578,10 @@ export class MedalGame {
   private handlePocketPass(medal: MedalEntity, pocket: PocketSlot): void {
     this.roundPocketCount++;
 
-    const typeMult = this.getMedalBaseScoreMult(medal.type);
     const feverMult = this.jpFeverTimer > 0 ? 2.0 : 1.0;
     const raw =
       this.stats.basePocketScore *
       pocket.scoreMultiplier *
-      typeMult *
       medal.chargeMultiplier *
       this.stats.globalScoreMultiplier *
       feverMult;
@@ -1285,11 +1603,11 @@ export class MedalGame {
     );
 
     if (medal.type === 'chrono') {
-      this.timeRemaining += 1.2;
-      this.addFloatingText(centerX, POCKET_ENTRY_Y - 28, '+1.2s TIME!', '#f472b6', 1.15);
+      this.timeRemaining += 0.8;
+      this.addFloatingText(centerX, POCKET_ENTRY_Y - 28, '+0.8s TIME!', '#f472b6', 1.15);
     }
 
-    const shouldSpawnBonus = pocket.spawnsBonusMedal || medal.type === 'clone';
+    const shouldSpawnBonus = pocket.spawnsBonusMedal;
     if (shouldSpawnBonus && this.physics.medals.length < 60) {
       const extra = Math.random() < this.stats.bonusMedalExtraChance ? 2 : 1;
       this.roundBonusMedals += extra;
@@ -1358,18 +1676,18 @@ export class MedalGame {
     sound.playJackpotLamp(lit);
   }
 
-  // JP時の射出メダル抽選（通常率：未強化70%〜強化で最大30%、特殊枠：ゴールド35/プラズマ25/バウンス18/クローン13/クロノ9）
+  // JP時の射出メダル抽選（通常率：未強化80%〜強化で50%、特殊枠：ゴールド32/プラズマ24/バウンス20/ラッシュ18/クロノ6%）
   private rollJackpotMedalType(): MedalType {
     if (Math.random() < this.stats.jpNormalMedalRate) {
       return 'normal';
     }
 
     const baseWeights: Record<string, number> = {
-      gold: 35,
-      plasma: 25,
-      bounce: 18,
-      clone: 13,
-      chrono: 9,
+      gold: 32,
+      plasma: 24,
+      bounce: 20,
+      rush: 18,
+      chrono: 6,
     };
 
     const unlockedTypes = new Set(this.stats.specialMedals.filter((t) => t !== 'normal'));
@@ -1432,14 +1750,14 @@ export class MedalGame {
     this.jackpotFlashTimer = 0.8;
     this.screenShakeTimer = 0.7;
 
-    // 50枚のストックメダルを事前生成（上部整列用）
+    // 100枚のストックメダルを事前生成（上部整列用：20枚×5行、純粋な確率抽選）
     this.freezeStockMedals = [];
-    const count = 50;
+    const count = 100;
     for (let i = 0; i < count; i++) {
-      const col = i % 17;
-      const row = Math.floor(i / 17);
-      const x = 54 + col * 22;
-      const y = 30 + row * 18;
+      const col = i % 20;
+      const row = Math.floor(i / 20);
+      const x = 42 + col * 19.8;
+      const y = 20 + row * 11.5;
       const type = this.rollJackpotMedalType();
       this.freezeStockMedals.push({ x, y, type });
     }
@@ -1468,7 +1786,7 @@ export class MedalGame {
       sound.playFreezePremium();
     }
 
-    // 4.4s: 演出完了！タイマー再開＆50枚一気放出
+    // 4.4s: 演出完了！タイマー再開＆100枚一気放出
     if (t >= 4.4) {
       this.releaseFreezeStockMedals();
     }
@@ -1477,24 +1795,24 @@ export class MedalGame {
   private releaseFreezeStockMedals(): void {
     this.isJackpotFreezing = false;
     this.jackpotFreezeTimer = 0;
-    this.screenShakeTimer = 1.3;
+    this.screenShakeTimer = 1.4;
     this.jackpotFlashTimer = 1.0;
     sound.playJackpotFanfare();
 
-    // 50枚を一斉に盤面へ射出！
+    // 100枚を一斉に盤面へ射出！
     for (let i = 0; i < this.freezeStockMedals.length; i++) {
       const stock = this.freezeStockMedals[i];
       const medal = this.physics.spawnMedal(stock.x, stock.y, stock.type, 'board');
-      const spreadX = (stock.x - BOARD_WIDTH * 0.5) * 1.6;
-      medal.vx = spreadX + (Math.random() - 0.5) * 80;
-      medal.vy = 240 + Math.random() * 140;
-      medal.chargeMultiplier = 1.0;
+      const spreadX = (stock.x - BOARD_WIDTH * 0.5) * 1.5;
+      medal.vx = spreadX + (Math.random() - 0.5) * 90;
+      medal.vy = 220 + Math.random() * 150;
+      medal.chargeMultiplier = this.getMedalBaseScoreMult(medal.type);
     }
 
     this.addFloatingText(
       BOARD_WIDTH * 0.5,
       200,
-      '★ 50 MEDALS OVERDRIVE!! ★',
+      '★ 100 MEDALS OVERDRIVE!! ★',
       '#f43f5e',
       2.0
     );
@@ -1519,6 +1837,92 @@ export class MedalGame {
       alpha: 1.0,
       scale,
     });
+  }
+
+  // 本格プラズマ稲妻エフェクト（ジグザグアーク放電）生成
+  private spawnLightning(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    color: string = '#c084fc'
+  ): void {
+    if (this.lightningBolts.length > 25) {
+      this.lightningBolts.shift();
+    }
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 3) return;
+
+    const nx = -dy / dist;
+    const ny = dx / dist;
+
+    // 4〜6セグメントの有機的ジグザグ中継点を算出
+    const segCount = Math.max(3, Math.min(6, Math.floor(dist / 14)));
+    const points: { x: number; y: number }[] = [{ x: x1, y: y1 }];
+
+    for (let i = 1; i < segCount; i++) {
+      const t = i / segCount;
+      const envelope = Math.sin(t * Math.PI); // 両端はブレず中間が大きく揺らぐ
+      const jitter = (Math.random() * 2 - 1) * 8.5 * envelope;
+      points.push({
+        x: x1 + dx * t + nx * jitter,
+        y: y1 + dy * t + ny * jitter,
+      });
+    }
+    points.push({ x: x2, y: y2 });
+
+    this.lightningBolts.push({
+      id: Math.random(),
+      points,
+      life: 1.0,
+      maxLife: 0.12,
+      color,
+    });
+  }
+
+  // 稲妻アーク放電描画（白芯コア＋紫・シアン多重ネオングロー）
+  private drawLightningBolts(ctx: CanvasRenderingContext2D): void {
+    if (this.lightningBolts.length === 0) return;
+    ctx.save();
+    for (const bolt of this.lightningBolts) {
+      const pts = bolt.points;
+      if (pts.length < 2) continue;
+
+      const alpha = Math.max(0, Math.min(1, bolt.life));
+
+      // 1. 外側の広域ネオングロー
+      ctx.strokeStyle = bolt.color;
+      ctx.globalAlpha = alpha * 0.75;
+      ctx.lineWidth = 3.4;
+      ctx.shadowColor = bolt.color;
+      ctx.shadowBlur = 12;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.stroke();
+
+      // 2. 内側の高輝度白芯コア（熱線）
+      ctx.strokeStyle = '#ffffff';
+      ctx.globalAlpha = alpha * 0.95;
+      ctx.lineWidth = 1.3;
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 5;
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private updateScoreHUD(): void {
@@ -1640,13 +2044,26 @@ export class MedalGame {
 
         // 倍率情報・特殊タイプ維持を視覚的に伝えるフローティングテキスト
         const multLabel = m.chargeMultiplier > 1.0 ? `x${m.chargeMultiplier.toFixed(1)} ` : '';
-        this.addFloatingText(m.x, m.y - 12, `WARP! ${multLabel}🛸`, '#00f2fe', 1.15);
-        this.addFloatingText(cat.x, cat.y - 16, 'WARPING! 🌀', '#38bdf8', 0.95);
+        this.addFloatingText(m.x, m.y - 12, `WARP! ${multLabel}`, '#00f2fe', 1.15);
+        this.addFloatingText(cat.x, cat.y - 16, 'WARPING!', '#38bdf8', 0.95);
       },
       onLuckyRingPass: (m, ring) => this.handleLuckyRingPass(m, ring),
       onJackpot: () => this.handleJackpotFever(),
       onPocketToggleLamp: (pk, lit) => this.handlePocketToggleLamp(pk, lit),
       onRailHit: () => sound.playMedalClink(0.35),
+      onPinElectrified: (pin, medal) => {
+        this.spawnLightning(medal.x, medal.y, pin.x, pin.y, '#c084fc');
+        sound.playMedalClink(0.4);
+      },
+      onElectrifiedPinHit: (pin, medal, newMultiplier) => {
+        this.spawnLightning(pin.x, pin.y, medal.x, medal.y, '#c084fc');
+        // 最終倍率だけをクリーンに表示（絵文字なし！）
+        this.addFloatingText(medal.x, medal.y - 14, `x${newMultiplier.toFixed(1)}`, '#c084fc', 1.05);
+        sound.playLaserSplit();
+      },
+      onMedalElectrified: (a, b) => {
+        this.spawnLightning(a.x, a.y, b.x, b.y, '#c084fc');
+      },
     });
 
     // JACKPOT 連続射出処理（左上・右上から交互に計10枚射出）
@@ -1713,6 +2130,14 @@ export class MedalGame {
       we.progress += dtSec * 3.8;
       if (we.progress >= 1) {
         this.warpEffects.splice(i, 1);
+      }
+    }
+
+    for (let i = this.lightningBolts.length - 1; i >= 0; i--) {
+      const bolt = this.lightningBolts[i];
+      bolt.life -= dtSec / bolt.maxLife;
+      if (bolt.life <= 0) {
+        this.lightningBolts.splice(i, 1);
       }
     }
 
@@ -1808,6 +2233,9 @@ export class MedalGame {
 
     // カタパルト・ワープエフェクト（吸い込み光輪＆出現スパーク）描画
     this.drawWarpEffects(ctx);
+
+    // プラズマ稲妻アーク放電描画
+    this.drawLightningBolts(ctx);
 
     ctx.restore();
 
@@ -1962,32 +2390,32 @@ export class MedalGame {
     ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, 0.85 - fadeProg * 0.65)})`;
     ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
 
-    // 盤面最上部に待機する50枚のストックメダルを描画
+    // 盤面最上部に待機する100枚のストックメダルを描画
     for (const m of this.freezeStockMedals) {
       const style = MEDAL_STYLE[m.type] || MEDAL_STYLE.normal;
       ctx.save();
       ctx.shadowColor = style.c1;
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 6;
 
-      // メダル本体（直径17pxのコンパクトサイズで美しく整列）
-      const grad = ctx.createRadialGradient(m.x - 2, m.y - 2, 1, m.x, m.y, 8.5);
+      // メダル本体（直径12.4pxのコンパクトサイズで美しく整列）
+      const grad = ctx.createRadialGradient(m.x - 1.5, m.y - 1.5, 1, m.x, m.y, 6.2);
       grad.addColorStop(0, '#ffffff');
       grad.addColorStop(0.35, style.c1);
       grad.addColorStop(1, style.c2);
 
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.arc(m.x, m.y, 8.5, 0, Math.PI * 2);
+      ctx.arc(m.x, m.y, 6.2, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = style.rim;
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.0;
       ctx.stroke();
 
       ctx.restore();
     }
 
-    // 上部中央に待機アナウンスネオン
+    // 上部中央に待機アナウンスネオン（絵文字なし）
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1995,7 +2423,7 @@ export class MedalGame {
     ctx.shadowColor = '#ec4899';
     ctx.shadowBlur = 12;
     ctx.fillStyle = '#fbcfe8';
-    ctx.fillText('⚡ 50 MEDALS READY... ⚡', BOARD_WIDTH * 0.5, 88);
+    ctx.fillText('100 MEDALS READY...', BOARD_WIDTH * 0.5, 82);
     ctx.restore();
 
     ctx.restore();
@@ -2923,6 +3351,42 @@ export class MedalGame {
         ctx.beginPath();
         ctx.arc(pin.x, pin.y, r, 0, Math.PI * 2);
         ctx.fill();
+      }
+
+      // === プラズマ帯電エフェクト（3秒間のパルス放電） ===
+      if (pin.electrifiedTimer > 0) {
+        const elecRatio = Math.min(1, pin.electrifiedTimer / 3.0);
+        const pulse = Math.sin(Date.now() * 0.015 + pin.id) * 0.25 + 0.75;
+
+        // 1. ピン周囲の紫プラズマ放電オーラ
+        ctx.save();
+        ctx.shadowColor = '#c084fc';
+        ctx.shadowBlur = 14 * pulse;
+        ctx.strokeStyle = `rgba(192, 132, 252, ${0.85 * pulse * elecRatio})`;
+        ctx.lineWidth = isBumper ? 2.8 : 2.0;
+        ctx.beginPath();
+        ctx.arc(pin.x, pin.y, r + (isBumper ? 5 : 3.5) * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 2. ピン周囲の微小スパーク（チリチリ周回するプラズマアーク）
+        const sparkAngle = (Date.now() * 0.009 + pin.id * 1.7) % (Math.PI * 2);
+        const sparkR = r + (isBumper ? 4.5 : 3.0);
+        const sx1 = pin.x + Math.cos(sparkAngle) * sparkR;
+        const sy1 = pin.y + Math.sin(sparkAngle) * sparkR;
+        const midR = sparkR + ((pin.id % 2 === 0 ? 2.5 : -2.0) * pulse);
+        const sxMid = pin.x + Math.cos(sparkAngle + 0.35) * midR;
+        const syMid = pin.y + Math.sin(sparkAngle + 0.35) * midR;
+        const sx2 = pin.x + Math.cos(sparkAngle + 0.7) * sparkR;
+        const sy2 = pin.y + Math.sin(sparkAngle + 0.7) * sparkR;
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(sx1, sy1);
+        ctx.lineTo(sxMid, syMid);
+        ctx.lineTo(sx2, sy2);
+        ctx.stroke();
+        ctx.restore();
       }
 
       ctx.restore();
