@@ -1,35 +1,32 @@
-# 実装計画書 (Plan.md) — メダルタップ時重さ解消 ＆ 各メダル固有タップ演出（電撃等）の実装
+# 実装計画書 (Plan.md) — メダル開放ラインのT字分岐（バウンス直下にゴールド、左右にプラズマ・クロノ）再編
 
 ## 1. 今回のタスクの目的
-1. **「ここでクリックしたときの挙動が重い原因は何？」への回答と解消**:
-   - 原因: 跳ねの重力加速度が `520 px/s²` と月面並みに低く設定されており、滞空時間（0.52秒）が長すぎて「フワ〜ッともっさり浮く」ため。さらにバウンド閾値のせいで着地時に1ミリも弾まず泥のようにベタッと止まっていた。
-   - 改善: 重力加速度を `2200〜3600 px/s²`（約4〜7倍）に引き上げ、初速と反発係数をメダルごとに最適化。タップした瞬間に「パチンッ！」と俊敏に弾む小気味よいキレを実現。
-2. **各特殊メダルごとの固有タップ挙動＆エフェクト・専用サウンドの実装**:
-   - **通常メダル**: 5枚スタックがカチャチャチャッと時間差で波打つウェーブジャンプ ＆ 小気味よいコイン音。
-   - **ラッシュメダル**: 2倍速の超俊敏ハイスピードジャンプ ＆ シアンの疾風・風リングエフェクト。
-   - **バウンスメダル**: ぷるぷる楕円伸縮（スカッシュ＆ストレッチ）＆ 3連続「ボヨヨ〜ン」高反発バウンド・ピンク波紋。
-   - **ゴールドメダル**: 黄金フラッシュ ＆ キラキラ輝くゴールド星屑・スパークル散布・高音チャイム。
-   - **プラズマメダル**: ユーザー提案！紫＆水色のギザギザ稲妻（電撃アーク）が周囲や隣接メダルへバチバチ走り、コイン自身も高速ビリビリ振動・電撃クラックル音。
-   - **クロノメダル**: 時計の文字盤・ギアサークルが浮かび上がり、空中タイムストップ浮遊 ＆ スピン着地。
+メダル開放ライン（下部・6時方向）のノード配置を、一筆書き円弧から **美しいT字分岐（アンカー型）** へ再編する。
+1. **バウンス直下にゴールド配置**:
+   - `medal_1`（ラッシュ / 第2円 90°） → `medal_2`（バウンス / 第3円 90°） → **`medal_3`（ゴールド / 第4円 90°）** と垂直に真っ直ぐ直進配置。
+2. **ゴールドから左右にプラズマとクロノを2分岐配置**:
+   - ゴールド（第4円 90°）を親ノードとして、左右のノードへ分岐：
+     - 左側: **`star_3`（プラズマ / 第4円 108°）**（580 PT）
+     - 右側: **`medal_5`（クロノ / 第4円 72°）**（920 PT）
+   - クロノの方が要求PTが高いため、プレイヤーは必然的にプラズマから順次取得する自然なゲーム進行となる。
 
 ---
 
 ## 2. 進行ステップ（全完了）
 - **ステップ1**:
-  - `Plan.md`, `task.md`, `implementation_plan.md` の策定。
+  - `Plan.md`, `task.md`, `implementation_plan.md` の策定完了。
 - **ステップ2**:
-  - `src/sound.ts`: 電撃音（`playElectricSpark`）、時計音（`playTimeTick`）の新設。
-  - `src/game.ts`: ショーケースのエフェクトシステム（パーティクル・稲妻アーク・時計ギア・スカッシュ＆ストレッチ）の実装と、メダルごとの固有物理・SEトリガー。
+  - `src/skillTree.ts`: `medal_3`（第4円 90°）、`star_3`（第4円 108°）、`medal_5`（第4円 72°）の座標と `neighbors` の更新完了。
 - **ステップ3**:
-  - 本番ビルド（`npm run build`）確認・成功。
-  - 実機キャプチャ（`shot_showcase_plasma_lightning.png`, `shot_showcase_gold_sparkle.png`, `shot_showcase_chrono_gear.png`）の視覚検証完了。
-  - 仕様書（`for_agent/SPECIFICATION.md` 第56版）、`AICHANGELOG.md`、`task.md`、`walkthrough.md` の同期完了。
+  - `npx tsc --noEmit` 型チェック完了（エラーなし）。
+  - `npm run build` 本番ビルド完了。
+  - 実機キャプチャ（`shot_tree_medal_t_branch.png`）の視覚検証完了。
+  - 仕様書（`for_agent/SPECIFICATION.md` 第62版）、`AICHANGELOG.md`、`task.md`、`walkthrough.md` の同期完了。
 
 ---
 
 ## 3. 対象ファイル
-- [`src/sound.ts`](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/src/sound.ts)
-- [`src/game.ts`](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/src/game.ts)
+- [`src/skillTree.ts`](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/src/skillTree.ts)
 - [`for_agent/SPECIFICATION.md`](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/for_agent/SPECIFICATION.md)
 - [`AICHANGELOG.md`](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/AICHANGELOG.md)
 - [`Plan.md`](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/Plan.md)

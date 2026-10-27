@@ -269,70 +269,264 @@ class SoundManager {
     osc.stop(now + 0.08);
   }
 
+  // 1.0s時点の不穏な砂嵐・走査線クラックルノイズ（ザザッ…）
+  public playFreezeGlitchNoise(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const dur = 0.38;
+
+    // ホワイトノイズ生成
+    const bufferSize = Math.floor(ctx.sampleRate * dur);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      // 間欠的なザザッ…というクラックル感を出す
+      const env = (i / bufferSize) > 0.4 ? 1.0 : (i % 800 < 400 ? 0.8 : 0.1);
+      data[i] = (Math.random() * 2 - 1) * env;
+    }
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(2400, now);
+    filter.frequency.linearRampToValueAtTime(1200, now + dur);
+    filter.Q.setValueAtTime(3.5, now);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.28, now + 0.1);
+    gain.gain.linearRampToValueAtTime(0.35, now + 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    noise.start(now);
+    noise.stop(now + dur + 0.05);
+  }
+
+  // 強烈なリアル「プチュン」音（バシィィン！放電アタック ＋ 超重低音地鳴り ＋ ピチュゥゥン収束）
   public playFreezePutsun(): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // 1. レイヤー1: 重低音サブベース衝撃波（ドスッ…！と心臓に響く超低域）
+    // 1. レイヤー1: 超重低音サブベース衝撃波（ドスッ…！と心臓を震わせる超低域）
     const oscSub = ctx.createOscillator();
     const gainSub = ctx.createGain();
     oscSub.type = 'triangle';
-    oscSub.frequency.setValueAtTime(120, now);
-    oscSub.frequency.exponentialRampToValueAtTime(26, now + 0.38);
-    gainSub.gain.setValueAtTime(0.38, now);
-    gainSub.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+    oscSub.frequency.setValueAtTime(100, now);
+    oscSub.frequency.exponentialRampToValueAtTime(20, now + 0.45);
+    gainSub.gain.setValueAtTime(0.65, now);
+    gainSub.gain.exponentialRampToValueAtTime(0.0001, now + 0.52);
     oscSub.connect(gainSub);
     gainSub.connect(ctx.destination);
     oscSub.start(now);
-    oscSub.stop(now + 0.45);
+    oscSub.stop(now + 0.55);
 
-    // 2. レイヤー2: 電源断アタック放電クリック（バチンッ！という破裂過渡音）
+    // 2. レイヤー2: 電源断アタック放電クリック（バシィッ！！という破裂過渡音）
     const oscClick = ctx.createOscillator();
     const gainClick = ctx.createGain();
     oscClick.type = 'sawtooth';
-    oscClick.frequency.setValueAtTime(2800, now);
-    oscClick.frequency.exponentialRampToValueAtTime(60, now + 0.05);
-    gainClick.gain.setValueAtTime(0.32, now);
-    gainClick.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
+    oscClick.frequency.setValueAtTime(3600, now);
+    oscClick.frequency.exponentialRampToValueAtTime(45, now + 0.07);
+    gainClick.gain.setValueAtTime(0.58, now);
+    gainClick.gain.exponentialRampToValueAtTime(0.0001, now + 0.085);
     oscClick.connect(gainClick);
     gainClick.connect(ctx.destination);
     oscClick.start(now);
-    oscClick.stop(now + 0.07);
+    oscClick.stop(now + 0.09);
 
     // 3. レイヤー3: CRTテレビ光収束ピチュンスイープ（中央へ光が吸い込まれる電子音）
     const oscSweep = ctx.createOscillator();
     const gainSweep = ctx.createGain();
     oscSweep.type = 'sine';
-    oscSweep.frequency.setValueAtTime(3200, now);
-    oscSweep.frequency.exponentialRampToValueAtTime(350, now + 0.22);
-    gainSweep.gain.setValueAtTime(0.24, now);
-    gainSweep.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+    oscSweep.frequency.setValueAtTime(4200, now);
+    oscSweep.frequency.exponentialRampToValueAtTime(280, now + 0.32);
+    gainSweep.gain.setValueAtTime(0.42, now);
+    gainSweep.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
     oscSweep.connect(gainSweep);
     gainSweep.connect(ctx.destination);
     oscSweep.start(now);
-    oscSweep.stop(now + 0.25);
+    oscSweep.stop(now + 0.36);
+
+    // 4. レイヤー4: 高電圧放電ノイズスプレー（チリチリ…という真空管放電感）
+    const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.12), ctx.sampleRate);
+    const nData = noiseBuf.getChannelData(0);
+    for (let i = 0; i < nData.length; i++) {
+      nData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.03));
+    }
+    const noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = noiseBuf;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.45, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+    noiseSource.connect(noiseGain);
+    noiseGain.connect(ctx.destination);
+    noiseSource.start(now);
+  }
+
+  // プレミアムJP文字出現時の重厚インパクト衝撃音 ＆ 壮大ロングファンファーレ（約2.5秒）
+  public playFreezeCrash(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // 1. 低域衝撃音（ドォォン！）
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(26, now + 0.45);
+    gain.gain.setValueAtTime(0.65, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.52);
+
+    // 2. 金属クラッシュ過渡音
+    const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.18), ctx.sampleRate);
+    const nData = noiseBuf.getChannelData(0);
+    for (let i = 0; i < nData.length; i++) {
+      nData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.04));
+    }
+    const nSource = ctx.createBufferSource();
+    nSource.buffer = noiseBuf;
+    const nFilter = ctx.createBiquadFilter();
+    nFilter.type = 'highpass';
+    nFilter.frequency.setValueAtTime(2800, now);
+    const nGain = ctx.createGain();
+    nGain.gain.setValueAtTime(0.35, now);
+    nGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+    nSource.connect(nFilter);
+    nFilter.connect(nGain);
+    nGain.connect(ctx.destination);
+    nSource.start(now);
+
+    // 3. 荘厳で特別感のあるロングファンファーレ（約2.5秒）
+    this.playFreezePremium();
   }
 
   public playFreezePremium(): void {
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
-    // 荘厳で上品なメジャー9thアルペジオ＆残響
-    const chord = [523.25, 659.25, 783.99, 987.77, 1174.66, 1318.51, 1567.98, 2093.0];
-    chord.forEach((freq, i) => {
+
+    // ヘルパー：ブラス音（金管楽器のような力強い和音）
+    const playBrassNote = (freq: number, startT: number, dur: number, vol: number) => {
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      osc1.type = 'sawtooth';
+      osc2.type = 'triangle';
+      osc1.frequency.setValueAtTime(freq, startT);
+      osc2.frequency.setValueAtTime(freq * 1.003, startT); // わずかなデチューンで厚み
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(freq * 3.5, startT);
+      filter.frequency.exponentialRampToValueAtTime(freq * 1.5, startT + dur);
+
+      gain.gain.setValueAtTime(0.001, startT);
+      gain.gain.linearRampToValueAtTime(vol, startT + 0.04);
+      gain.gain.setValueAtTime(vol * 0.85, startT + dur * 0.6);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startT + dur);
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(startT);
+      osc2.start(startT);
+      osc1.stop(startT + dur + 0.05);
+      osc2.stop(startT + dur + 0.05);
+    };
+
+    // ヘルパー：クリスタルベル・チャイム（キラキラした高音）
+    const playBell = (freq: number, startT: number, vol: number) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      const t = now + i * 0.08;
-      osc.frequency.setValueAtTime(freq, t);
-      gain.gain.setValueAtTime(0.12, t);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.85);
+      osc.frequency.setValueAtTime(freq, startT);
+      gain.gain.setValueAtTime(vol, startT);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startT + 0.6);
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.9);
+      osc.start(startT);
+      osc.stop(startT + 0.65);
+    };
+
+    // --- 進行構成（全2.5秒） ---
+    // 1音目: Cmaj (0.0s〜0.45s) - PREMIUM激突！
+    const c1 = [261.63, 329.63, 392.0, 523.25]; // C4, E4, G4, C5
+    c1.forEach((f) => playBrassNote(f, now, 0.42, 0.1));
+
+    // 2音目: Fmaj (0.45s〜0.9s) - エネルギー集結！
+    const c2 = [349.23, 440.0, 523.25, 698.46]; // F4, A4, C5, F5
+    c2.forEach((f) => playBrassNote(f, now + 0.45, 0.42, 0.11));
+
+    // 3音目: Gmaj (0.9s〜1.35s) - JACKPOT激突！！（2回目の低音インパクト付き）
+    const c3 = [392.0, 493.88, 587.33, 783.99]; // G4, B4, D5, G5
+    c3.forEach((f) => playBrassNote(f, now + 0.9, 0.42, 0.12));
+
+    // 3音目 JACKPOT激突の低音サブベース（ズドォォン！）
+    const oscJp = ctx.createOscillator();
+    const gainJp = ctx.createGain();
+    oscJp.type = 'triangle';
+    oscJp.frequency.setValueAtTime(140, now + 0.9);
+    oscJp.frequency.exponentialRampToValueAtTime(24, now + 1.3);
+    gainJp.gain.setValueAtTime(0.58, now + 0.9);
+    gainJp.gain.exponentialRampToValueAtTime(0.0001, now + 1.35);
+    oscJp.connect(gainJp);
+    gainJp.connect(ctx.destination);
+    oscJp.start(now + 0.9);
+    oscJp.stop(now + 1.38);
+
+    // 4音目: 祝祭大団円 完全協和ピュアCmaj（1.35s〜2.6s: 不協和音完全ゼロ・極上の澄み切ったロングサステイン）
+    // 不快な半音衝突（B音とC音）を排除し、C, E, G の倍音・オクターブのみで美しく調和
+    const c4 = [261.63, 392.0, 523.25, 659.25, 783.99, 1046.5, 1318.51]; // C4, G4, C5, E5, G5, C6, E6
+    c4.forEach((f) => playBrassNote(f, now + 1.35, 1.3, 0.11));
+
+    // 低音ベース進行（C2 -> F2 -> G2 -> C3）
+    const bass = [
+      { f: 65.41, t: 0.0, d: 0.44 },
+      { f: 87.31, t: 0.45, d: 0.44 },
+      { f: 98.0, t: 0.9, d: 0.44 },
+      { f: 130.81, t: 1.35, d: 1.25 },
+    ];
+    bass.forEach((b) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(b.f, now + b.t);
+      gain.gain.setValueAtTime(0.22, now + b.t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + b.t + b.d);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + b.t);
+      osc.stop(now + b.t + b.d + 0.05);
     });
+
+    // 高音クリスタルベル・グリッサンド（キラキラと祝福する星屑チャイム）
+    const bells = [
+      { f: 1046.5, dt: 0.2 },
+      { f: 1174.66, dt: 0.35 },
+      { f: 1318.51, dt: 0.5 },
+      { f: 1567.98, dt: 0.68 },
+      { f: 1760.0, dt: 0.85 },
+      { f: 1975.53, dt: 1.05 },
+      { f: 2093.0, dt: 1.35 },
+      { f: 2637.02, dt: 1.45 },
+      { f: 3135.96, dt: 1.55 },
+    ];
+    bells.forEach((b) => playBell(b.f, now + b.dt, 0.08));
   }
 
   public playElectricSpark(): void {

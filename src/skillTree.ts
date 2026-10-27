@@ -35,7 +35,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'r1_0',
     name: '投下間隔短縮 I',
-    description: '投下クールタイム -15%',
+    description: '投下クールタイム -10%',
     ...polar(ORBIT_R1, -90),
     maxLevel: 3,
     baseCost: 8,
@@ -64,7 +64,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     maxLevel: 3,
     baseCost: 12,
     costScale: 1.7,
-    neighbors: ['r1_0', 'r2_0', 'm2_1'],
+    neighbors: ['r1_0', 'r2_0', 'm2_5'],
     category: 'stat',
     icon: '⏱',
   },
@@ -82,15 +82,15 @@ export const SKILL_NODES: SkillNodeDef[] = [
   },
   {
     id: 'r1_4',
-    name: '同時装填数強化 I',
-    description: '1回の装填枚数 1枚→2枚',
+    name: 'バンパー基礎点 I',
+    description: 'バンパーの基礎点数 +1',
     ...polar(ORBIT_R1, 150),
-    maxLevel: 1,
-    baseCost: 24,
-    costScale: 1,
+    maxLevel: 3,
+    baseCost: 20,
+    costScale: 1.8,
     neighbors: ['r1_3', 'r2_3', 'm2_3'],
     category: 'stat',
-    icon: '🔋',
+    icon: '🎯',
   },
   {
     id: 'r1_5',
@@ -100,7 +100,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     maxLevel: 4,
     baseCost: 10,
     costScale: 1.6,
-    neighbors: ['r1_0', 'm2_0', 'm2_5'],
+    neighbors: ['r1_0', 'm2_0', 'r2_4'],
     category: 'stat',
     icon: '🧲',
   },
@@ -134,11 +134,11 @@ export const SKILL_NODES: SkillNodeDef[] = [
     id: 'medal_3',
     name: 'ゴールドメダル追加',
     description: '初期メダルにゴールドメダル（得点x3）を+1枚追加',
-    ...polar(ORBIT_R4, 108),
+    ...polar(ORBIT_R4, 90),
     maxLevel: 1,
     baseCost: 360,
     costScale: 1,
-    neighbors: ['medal_2', 'star_3'],
+    neighbors: ['medal_2', 'star_3', 'medal_5'],
     category: 'medal',
     icon: '🪙',
   },
@@ -146,11 +146,11 @@ export const SKILL_NODES: SkillNodeDef[] = [
     id: 'star_3',
     name: 'プラズマメダル追加',
     description: '初期メダルにプラズマメダル（得点x2・接触ピンを3秒帯電させて通過メダル倍率+0.2加算）を+1枚追加',
-    ...polar(ORBIT_R4, 90),
+    ...polar(ORBIT_R4, 108),
     maxLevel: 1,
     baseCost: 580,
     costScale: 1,
-    neighbors: ['medal_3', 'medal_5'],
+    neighbors: ['medal_3'],
     category: 'medal',
     icon: '🔮',
   },
@@ -162,7 +162,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     maxLevel: 1,
     baseCost: 920,
     costScale: 1,
-    neighbors: ['star_3'],
+    neighbors: ['medal_3'],
     category: 'medal',
     icon: '👑',
   },
@@ -290,17 +290,42 @@ export const SKILL_NODES: SkillNodeDef[] = [
     category: 'milestone',
     icon: '⚡',
   },
+  // === 右上セクター（第2円: -18°：投下特化ライン） ===
   {
-    id: 'm2_1',
-    name: 'クローンオーブ',
-    description: '盤面に分裂オーブ出現（通過でメダル分裂 Lv1:+1枚 / Lv2:分裂得点x1.5 / Lv3:+2枚）',
+    id: 'm2_5',
+    name: '長押し投下',
+    description: '盤面の長押し連続投下を解放',
     ...polar(ORBIT_R2, -18),
-    maxLevel: 3,
-    baseCost: 60,
-    costScale: 1.7,
-    neighbors: ['r1_1'],
+    maxLevel: 1,
+    baseCost: 190,
+    costScale: 1,
+    neighbors: ['r1_1', 'drop_spd_2'],
     category: 'milestone',
-    icon: '🌀',
+    icon: '👇',
+  },
+  {
+    id: 'drop_spd_2',
+    name: '投下間隔短縮 II',
+    description: '投下クールタイム -10%（最大Lv3で-30%）',
+    ...polar(ORBIT_R3, -18),
+    maxLevel: 3,
+    baseCost: 180,
+    costScale: 1.8,
+    neighbors: ['m2_5', 'drop_spd_3'],
+    category: 'stat',
+    icon: '⚡',
+  },
+  {
+    id: 'drop_spd_3',
+    name: '投下間隔短縮 III',
+    description: '投下クールタイム -10%（最大Lv3で-30%、計-90%の超連射）',
+    ...polar(ORBIT_R4, -18),
+    maxLevel: 3,
+    baseCost: 450,
+    costScale: 1.8,
+    neighbors: ['drop_spd_2'],
+    category: 'stat',
+    icon: '⚡',
   },
 
   // === 右下セクター（第2円: 18°, 54°） ===
@@ -426,6 +451,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     category: 'milestone',
     icon: '🌩',
   },
+  // === 左下セクター（第2円: 162°：装填特化ライン） ===
   {
     id: 'm2_3',
     name: '長押し装填',
@@ -434,19 +460,69 @@ export const SKILL_NODES: SkillNodeDef[] = [
     maxLevel: 1,
     baseCost: 190,
     costScale: 1,
-    neighbors: ['r1_4', 'r2_4'],
+    neighbors: ['r1_4', 'reload_count', 'reload_spd_1'],
     category: 'milestone',
     icon: '⏫',
   },
   {
+    id: 'reload_count',
+    name: '装填枚数増加',
+    description: '1回の同時装填枚数 +1枚（最大Lv3で計4枚一括装填）',
+    ...polar(ORBIT_R3, 146),
+    maxLevel: 3,
+    baseCost: 120,
+    costScale: 1.8,
+    neighbors: ['m2_3', 'outer_5'],
+    category: 'stat',
+    icon: '🔋',
+  },
+  {
+    id: 'reload_spd_1',
+    name: '装填速度増加 I',
+    description: 'メダル装填速度 +25%（最大Lv2で+50%）',
+    ...polar(ORBIT_R3, 168),
+    maxLevel: 2,
+    baseCost: 100,
+    costScale: 1.8,
+    neighbors: ['m2_3', 'reload_spd_2'],
+    category: 'stat',
+    icon: '⚡',
+  },
+  {
+    id: 'reload_spd_2',
+    name: '装填速度増加 II',
+    description: 'メダル装填速度 +25%（最大Lv2で+50%、計+100% 2倍速）',
+    ...polar(ORBIT_R4, 168),
+    maxLevel: 2,
+    baseCost: 300,
+    costScale: 1.8,
+    neighbors: ['reload_spd_1'],
+    category: 'stat',
+    icon: '⚡',
+  },
+  {
+    id: 'outer_5',
+    name: 'バンパー基礎点倍化',
+    description: 'バンパーの基礎点数 x2',
+    ...polar(ORBIT_R4, 146),
+    maxLevel: 1,
+    baseCost: 1800,
+    costScale: 1,
+    neighbors: ['reload_count'],
+    category: 'stat',
+    icon: '👑',
+  },
+
+  // === 左上セクター（第2円: -162°, -126°：回収特化ライン ＆ 制限時間延長ライン） ===
+  {
     id: 'r2_4',
     name: '制限時間延長 III',
     description: '制限時間 +1秒',
-    ...polar(ORBIT_R3, 162),
+    ...polar(ORBIT_R2, -126),
     maxLevel: 3,
     baseCost: 40,
     costScale: 1.7,
-    neighbors: ['m2_3', 'm2_4'],
+    neighbors: ['r1_5', 'm2_4'],
     category: 'stat',
     icon: '⏱',
   },
@@ -454,7 +530,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     id: 'm2_4',
     name: '制限時間延長 IV',
     description: '制限時間 +1秒',
-    ...polar(ORBIT_R4, 162),
+    ...polar(ORBIT_R3, -126),
     maxLevel: 3,
     baseCost: 110,
     costScale: 1.8,
@@ -462,79 +538,77 @@ export const SKILL_NODES: SkillNodeDef[] = [
     category: 'stat',
     icon: '⏱',
   },
-
-  // === 左上セクター（第2円: -162°, -126°） ===
   {
     id: 'm2_0',
     name: '連続回収',
     description: '下皿の長押し・なぞり連続回収を解放',
-    ...polar(ORBIT_R2, -126),
+    ...polar(ORBIT_R2, -162),
     maxLevel: 1,
     baseCost: 190,
     costScale: 1,
-    neighbors: ['r1_5'],
+    neighbors: ['r1_5', 'pickup_count', 'pickup_spd_1'],
     category: 'milestone',
     icon: '👋',
   },
   {
-    id: 'm2_5',
-    name: '長押し投下',
-    description: '盤面の長押し連続投下を解放',
-    ...polar(ORBIT_R2, -162),
-    maxLevel: 1,
-    baseCost: 210,
-    costScale: 1,
-    neighbors: ['r1_5', 'r2_5', 'star_5'],
-    category: 'milestone',
-    icon: '👇',
-  },
-  {
-    id: 'r2_5',
-    name: 'バンパー基礎点 I',
-    description: 'バンパーの基礎点数 +1',
+    id: 'pickup_count',
+    name: '回収枚数増加',
+    description: '1回の下皿回収枚数 +1枚（最大Lv3で計4枚まとめ回収）',
     ...polar(ORBIT_R3, -146),
     maxLevel: 3,
-    baseCost: 140,
+    baseCost: 120,
     costScale: 1.8,
-    neighbors: ['m2_5', 'outer_5'],
+    neighbors: ['m2_0', 'm2_1'],
     category: 'stat',
-    icon: '🎯',
+    icon: '🤲',
   },
   {
-    id: 'outer_5',
-    name: 'バンパー基礎点倍化',
-    description: 'バンパーの基礎点数 x2',
-    ...polar(ORBIT_R4, -146),
-    maxLevel: 1,
-    baseCost: 1800,
-    costScale: 1,
-    neighbors: ['r2_5'],
-    category: 'stat',
-    icon: '👑',
-  },
-  {
-    id: 'star_5',
-    name: '連射速度＆同時装填強化',
-    description: '投下・回収・装填の間隔 -35% ＆ 1回の装填枚数 2枚→3枚',
+    id: 'pickup_spd_1',
+    name: '回収速度増加 I',
+    description: '下皿回収速度 +25%（最大Lv2で+50%）',
     ...polar(ORBIT_R3, -168),
-    maxLevel: 1,
-    baseCost: 440,
-    costScale: 1,
-    neighbors: ['m2_5', 'outer_4'],
+    maxLevel: 2,
+    baseCost: 100,
+    costScale: 1.8,
+    neighbors: ['m2_0', 'pickup_spd_2'],
+    category: 'stat',
+    icon: '⚡',
+  },
+  {
+    id: 'pickup_spd_2',
+    name: '回収速度増加 II',
+    description: '下皿回収速度 +25%（最大Lv2で+50%、計+100% 2倍速）',
+    ...polar(ORBIT_R4, -168),
+    maxLevel: 2,
+    baseCost: 300,
+    costScale: 1.8,
+    neighbors: ['pickup_spd_1'],
+    category: 'stat',
+    icon: '⚡',
+  },
+  {
+    id: 'm2_1',
+    name: 'クローンオーブ',
+    description: '盤面に分裂オーブ出現（通過でメダル分裂 Lv1:+1枚 / Lv2:分裂得点x1.5 / Lv3:+2枚）',
+    ...polar(ORBIT_R4, -146),
+    maxLevel: 3,
+    baseCost: 60,
+    costScale: 1.7,
+    neighbors: ['pickup_count'],
     category: 'milestone',
-    icon: '🚀',
+    icon: '🌀',
   },
   {
     id: 'outer_4',
     name: '獲得ポイント強化 III',
     description: '全獲得スコア x1.5 ＆ 初期メダル +1枚',
-    ...polar(ORBIT_R4, -168),
+    ...polar(ORBIT_R4, 64),
     maxLevel: 1,
     baseCost: 1000,
     costScale: 1,
-    neighbors: ['star_5'],
+    neighbors: ['outer_2'],
     category: 'stat',
-    icon: '🌌',
+    icon: '🌾',
   },
 ];
 
@@ -617,9 +691,12 @@ export class SkillTreeState {
     if (lv('medal_5') > 0) specialMedals.push('chrono');
 
     // 投下クールタイム（初期 1.0秒）
-    let dropCooldown = 1.0;
-    dropCooldown *= Math.pow(0.85, lv('r1_0'));
-    if (lv('star_5') > 0) dropCooldown *= 0.65;
+    // 投下間隔短縮 I: 1Lvあたり -10%（最大Lv3で-30%）
+    // 投下間隔短縮 II: 1Lvあたり -10%（最大Lv3で-30%）
+    // 投下間隔短縮 III: 1Lvあたり -10%（最大Lv3で-30%）
+    // 合計最大 -90%（0.10秒）
+    const dropReduction = 0.10 * (lv('r1_0') + lv('drop_spd_2') + lv('drop_spd_3'));
+    let dropCooldown = 1.0 * (1 - Math.min(0.90, dropReduction));
     dropCooldown = Math.max(0.08, dropCooldown);
 
     // ベースの制限時間：15.0秒 ＋ 「+1秒（最大3回）」× 5マス（r1_3, r1_1, r2_4, m2_4, outer_1）
@@ -627,24 +704,25 @@ export class SkillTreeState {
       lv('r1_3') + lv('r1_1') + lv('r2_4') + lv('m2_4') + lv('outer_1');
     const roundDuration = 15.0 + timeBonusLevels * 1.0;
 
-    // 下皿回収速度・範囲（初期30pxに対して25%ずつ加算、最大Lv4で60px）
-    let pickupInterval = 0.13;
-    if (lv('star_5') > 0) pickupInterval *= 0.65;
+    // 下皿回収速度・枚数・範囲
+    // 回収速度増加 I (+25%/Lv), II (+25%/Lv) => 計最大+100% (2倍速)
+    const pickupSpdBonus = 0.25 * (lv('pickup_spd_1') + lv('pickup_spd_2'));
+    let pickupInterval = 0.13 / (1 + pickupSpdBonus);
     pickupInterval = Math.max(0.04, pickupInterval);
 
+    const pickupBatchSize = 1 + lv('pickup_count'); // 初期1枚、Lv3で最大4枚
     const pickupRadius = Math.round(30 * (1 + 0.25 * lv('r1_5')));
 
     // 装填速度・同時装填枚数
-    let reloadInterval = 0.16;
-    if (lv('star_5') > 0) reloadInterval *= 0.65;
-    reloadInterval = Math.max(0.05, reloadInterval);
+    // 装填速度増加 I (+25%/Lv), II (+25%/Lv) => 計最大+100% (2倍速)
+    const reloadSpdBonus = 0.25 * (lv('reload_spd_1') + lv('reload_spd_2'));
+    let reloadInterval = 0.16 / (1 + reloadSpdBonus);
+    reloadInterval = Math.max(0.04, reloadInterval);
 
-    let reloadBatchSize = 1;
-    if (lv('r1_4') >= 1) reloadBatchSize = 2;
-    if (lv('star_5') >= 1) reloadBatchSize = 3;
+    const reloadBatchSize = 1 + lv('reload_count'); // 初期1枚、Lv3で最大4枚
 
-    // バンパー（ピン）は初期0点、r2_5 / m2_2 / outer_5 で増加
-    let basePinScore = lv('r2_5') * 1 + lv('m2_2') * 2;
+    // バンパー（ピン）は初期0点、r1_4 (バンパー基礎点I) / m2_2 (バンパー基礎点II) / outer_5 (倍化)
+    let basePinScore = lv('r1_4') * 1 + lv('m2_2') * 2;
     if (lv('outer_5') > 0) basePinScore *= 2;
 
     // メダル1枚の基礎点数は初期 1点
@@ -663,8 +741,8 @@ export class SkillTreeState {
 
     // ピン配置ティア (0〜4)
     let pinLayoutTier = 0;
-    if (lv('r2_5') >= 1) pinLayoutTier = 1;
-    if (lv('r2_5') >= 3) pinLayoutTier = 2;
+    if (lv('r1_4') >= 1) pinLayoutTier = 1;
+    if (lv('r1_4') >= 3) pinLayoutTier = 2;
     if (lv('m2_2') >= 1) pinLayoutTier = 3;
     if (lv('outer_5') >= 1) pinLayoutTier = 4;
 
@@ -732,6 +810,7 @@ export class SkillTreeState {
       swipePickupUnlocked: lv('m2_0') > 0,
       pickupInterval,
       pickupRadius,
+      pickupBatchSize,
       holdReloadUnlocked: lv('m2_3') > 0,
       reloadInterval,
       reloadBatchSize,

@@ -1427,39 +1427,50 @@ export class MedalGame {
     this.updateTreeUI();
   }
 
-  // 操作1：下皿からメダルを拾う（3Dスタックの一番上のコインから優先回収）
+  // 操作1：下皿からメダルを拾う（3Dスタックの一番上のコインから優先回収、回収枚数増加に対応）
   private tryPickupFromTray(tx: number, ty: number): void {
-    let bestIndex = -1;
-    let bestScore = Infinity;
     const maxRadius = this.stats.pickupRadius + MEDAL_RADIUS + 8;
+    const batchSize = Math.max(1, this.stats.pickupBatchSize || 1);
+    let pickedAny = false;
 
-    for (let i = 0; i < this.physics.medals.length; i++) {
-      const m = this.physics.medals[i];
-      if (m.zone !== 'tray') continue;
-      const dx = Math.abs(m.x - tx);
-      const dy = Math.abs(m.y - ty);
-      const dist = Math.hypot(dx, dy * 0.65);
-      if (dist <= maxRadius) {
-        // 同じ山の中では一番上（yが小さい方）を優先して拾う
-        const score = dx * 0.8 + (m.y - TRAY_TOP_Y) * 0.35;
-        if (score < bestScore) {
-          bestScore = score;
-          bestIndex = i;
+    for (let b = 0; b < batchSize; b++) {
+      let bestIndex = -1;
+      let bestScore = Infinity;
+
+      for (let i = 0; i < this.physics.medals.length; i++) {
+        const m = this.physics.medals[i];
+        if (m.zone !== 'tray') continue;
+        const dx = Math.abs(m.x - tx);
+        const dy = Math.abs(m.y - ty);
+        const dist = Math.hypot(dx, dy * 0.65);
+        if (dist <= maxRadius) {
+          // 同じ山の中では一番上（yが小さい方）を優先して拾う
+          const score = dx * 0.8 + (m.y - TRAY_TOP_Y) * 0.35;
+          if (score < bestScore) {
+            bestScore = score;
+            bestIndex = i;
+          }
         }
+      }
+
+      if (bestIndex !== -1) {
+        const picked = this.physics.medals.splice(bestIndex, 1)[0];
+        this.heldQueue.push(picked.type);
+        this.pickupParticles.push({
+          x: picked.x,
+          y: picked.y,
+          tx: (INSERT_BOX_LEFT + INSERT_BOX_RIGHT) * 0.5,
+          ty: INSERT_BOX_TOP + 34,
+          progress: 0,
+          type: picked.type,
+        });
+        pickedAny = true;
+      } else {
+        break;
       }
     }
 
-    if (bestIndex !== -1) {
-      const picked = this.physics.medals.splice(bestIndex, 1)[0];
-      this.heldQueue.push(picked.type);
-      this.pickupParticles.push({
-        x: picked.x,
-        y: picked.y,
-        tx: (INSERT_BOX_LEFT + INSERT_BOX_RIGHT) * 0.5,
-        ty: INSERT_BOX_TOP + 34,
-        progress: 0,
-        type: picked.type,
-      });
+    if (pickedAny) {
       sound.playPickup();
     }
   }
@@ -1742,13 +1753,13 @@ export class MedalGame {
     );
   }
 
-  // JPロングフリーズ演出開始（4.4秒演出：停止・プチュン暗転・虹色ロゴ・50枚待機）
+  // JPロングフリーズ演出開始（5.0秒演出：通常JP偽装→砂嵐グリッチ→プチュン暗転→巨大PREMIUM JPカットイン→100枚待機）
   private startJackpotFreeze(): void {
     sound.playJackpotFanfare(); // フリーズ突入時もJACKPOTファンファーレを再生！
     this.isJackpotFreezing = true;
     this.jackpotFreezeTimer = 0;
     this.jackpotFlashTimer = 0.8;
-    this.screenShakeTimer = 0.7;
+    this.screenShakeTimer = 0.5;
 
     // 100枚のストックメダルを事前生成（上部整列用：20枚×5行、純粋な確率抽選）
     this.freezeStockMedals = [];
@@ -1776,18 +1787,25 @@ export class MedalGame {
     this.jackpotFreezeTimer += dtSec;
     const t = this.jackpotFreezeTimer;
 
-    // 1.0s: プチュン消音＆暗転
+    // 1.0s: ザザッ…砂嵐・走査線ノイズ音
     if (prevT < 1.0 && t >= 1.0) {
+      sound.playFreezeGlitchNoise();
+    }
+
+    // 1.45s: バシィッ！プチュン消音＆暗転収束
+    if (prevT < 1.45 && t >= 1.45) {
       sound.playFreezePutsun();
+      this.screenShakeTimer = 0.35;
     }
 
-    // 1.6s: PREMIUM JACKPOT 虹色ネオン開始（荘厳プレミアム和音）
-    if (prevT < 1.6 && t >= 1.6) {
-      sound.playFreezePremium();
+    // 2.3s: ドガァァン！PREMIUM JACKPOT 激突カットイン（クラッシュ＆荘厳ロングファンファーレ）
+    if (prevT < 2.3 && t >= 2.3) {
+      sound.playFreezeCrash();
+      this.screenShakeTimer = 0.65;
     }
 
-    // 4.4s: 演出完了！タイマー再開＆100枚一気放出
-    if (t >= 4.4) {
+    // 6.0s: 演出完了！タイマー再開＆100枚一気放出（+1.0s延長でロングファンファーレを堪能）
+    if (t >= 6.0) {
       this.releaseFreezeStockMedals();
     }
   }
@@ -1808,14 +1826,6 @@ export class MedalGame {
       medal.vy = 220 + Math.random() * 150;
       medal.chargeMultiplier = this.getMedalBaseScoreMult(medal.type);
     }
-
-    this.addFloatingText(
-      BOARD_WIDTH * 0.5,
-      200,
-      '★ 100 MEDALS OVERDRIVE!! ★',
-      '#f43f5e',
-      2.0
-    );
   }
 
   private addFloatingText(
@@ -2281,113 +2291,446 @@ export class MedalGame {
     ctx.restore();
   }
 
-  // JPロングフリーズ演出描画（4.4秒タイムライン：静止グリッチ→プチュン暗転→虹色PREMIUM JACKPOT→50枚待機）
+  // JPロングフリーズ演出描画（5.0秒タイムライン：通常偽装→ザザ砂嵐→プチュン画像再現→巨大PREMIUM JPカットイン→100枚待機）
   private drawJackpotFreezeOverlay(ctx: CanvasRenderingContext2D): void {
     const t = this.jackpotFreezeTimer;
 
-    // === Stage 1: 0.0s〜1.0s (完全静止＆微細グリッチ) ===
+    // === Stage 1: 0.0s〜1.0s (通常JPと同じ、ノイズ一切なしでプレイヤーを油断させる) ===
     if (t < 1.0) {
+      return;
+    }
+
+    // === Stage 2: 1.0s〜1.45s (突如走る「ザザッ…」という砂嵐・走査線・RGBグリッチノイズ) ===
+    if (t < 1.45) {
+      const glitchProg = (t - 1.0) / 0.45; // 0 -> 1
       ctx.save();
-      for (let i = 0; i < 4; i++) {
-        const gy = Math.floor((Math.sin(t * 20 + i * 2) * 0.5 + 0.5) * BOARD_HEIGHT);
-        ctx.fillStyle = i % 2 === 0 ? 'rgba(0, 242, 254, 0.18)' : 'rgba(244, 63, 94, 0.18)';
-        ctx.fillRect(0, gy, BOARD_WIDTH, 4 + (i % 3) * 3);
+      // 走査線ノイズ（ランダムな高さのライン）
+      const lineCount = 8 + Math.floor(Math.random() * 8);
+      for (let i = 0; i < lineCount; i++) {
+        const gy = Math.floor(Math.random() * BOARD_HEIGHT);
+        const gh = 2 + Math.floor(Math.random() * 8);
+        const colors = [
+          'rgba(0, 242, 254, 0.45)', // シアン
+          'rgba(244, 63, 94, 0.45)',  // マゼンタ
+          'rgba(255, 255, 255, 0.6)',  // 白
+          'rgba(0, 0, 0, 0.8)'         // 黒遮断
+        ];
+        ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+        ctx.fillRect(0, gy, BOARD_WIDTH, gh);
+      }
+
+      // 砂嵐グレイン（細かいノイズ点群）
+      const grainCount = 120;
+      for (let i = 0; i < grainCount; i++) {
+        const gx = Math.random() * BOARD_WIDTH;
+        const gy = Math.random() * BOARD_HEIGHT;
+        const size = Math.random() < 0.2 ? 3 : 1.5;
+        ctx.fillStyle =
+          Math.random() < 0.5 ? 'rgba(255, 255, 255, 0.35)' : 'rgba(168, 85, 247, 0.35)';
+        ctx.fillRect(gx, gy, size, size);
+      }
+
+      // 画面暗転の兆候（終盤にかけて点滅）
+      if (Math.random() < glitchProg * 0.7) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
       }
       ctx.restore();
       return;
     }
 
-    // === Stage 2: 1.0s〜1.6s (プチュン CRTテレビ電源オフ＆暗転) ===
-    if (t < 1.6) {
-      const p = (t - 1.0) / 0.6; // 0 -> 1
+    // === Stage 3: 1.45s〜2.05s (プチュン：添付画像完全再現の紫アナモルフィックフレア＆4条ダイヤモンドスターバースト) ===
+    if (t < 2.05) {
+      const p = (t - 1.45) / 0.6; // 0 -> 1
       ctx.save();
+      // 完全な漆黒
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
 
-      // 中央に収束するホワイトライン＆ドット
-      const beamAlpha = Math.max(0, 1 - p * 1.5);
-      if (beamAlpha > 0) {
-        ctx.fillStyle = `rgba(255, 255, 255, ${beamAlpha})`;
-        ctx.shadowColor = '#00f2fe';
-        ctx.shadowBlur = 12;
-        const h = Math.max(1.5, (1 - p) * 12);
-        const w = Math.max(4, (1 - p) * BOARD_WIDTH);
-        ctx.fillRect((BOARD_WIDTH - w) * 0.5, BOARD_HEIGHT * 0.5 - h * 0.5, w, h);
-      }
-      ctx.restore();
-      return;
-    }
+      const cx = BOARD_WIDTH * 0.5;
+      const cy = BOARD_HEIGHT * 0.5;
 
-    // === Stage 3: 1.6s〜3.4s (漆黒の背景に虹色立体 PREMIUM JACKPOT) ===
-    if (t < 3.4) {
-      ctx.save();
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+      // 収束イージング：前半は力強く輝き、後半急速に中央1点へ吸い込まれる
+      // p: 0.0〜0.2 は最大発光、0.2〜1.0 で中央へ収束
+      const scaleProg = p < 0.2 ? 1.0 : 1.0 - Math.pow((p - 0.2) / 0.8, 1.8);
+      const intensity = Math.max(0, 1.0 - Math.pow(p, 1.4));
 
-      // 上品な星屑パーティクル（静かに漂う光の粒子）
-      for (let i = 0; i < 28; i++) {
-        const px = (Math.sin(i * 1.7 + t * 0.5) * 0.5 + 0.5) * BOARD_WIDTH;
-        const py = (Math.cos(i * 2.3 + t * 0.4) * 0.5 + 0.5) * (BOARD_HEIGHT * 0.7) + 80;
-        const pr = (Math.sin(t * 3 + i) * 0.5 + 0.5) * 2 + 1;
-        const pAlpha = (Math.sin(t * 4 + i * 2) * 0.5 + 0.5) * 0.8 + 0.2;
-        ctx.fillStyle = i % 2 === 0 ? `rgba(250, 204, 21, ${pAlpha})` : `rgba(244, 114, 182, ${pAlpha})`;
+      if (scaleProg > 0.001 && intensity > 0.001) {
+        // --- 1. 水平アナモルフィック・レンズフレア（画面を横一線に貫く光条） ---
+        const beamHalfW = BOARD_WIDTH * 0.5 * Math.max(0.05, scaleProg);
+
+        // 外周紫ネオングロー
+        ctx.save();
+        ctx.shadowColor = '#c084fc';
+        ctx.shadowBlur = 28 * intensity;
+        ctx.strokeStyle = `rgba(168, 85, 247, ${0.7 * intensity})`;
+        ctx.lineWidth = Math.max(1, 16 * intensity);
         ctx.beginPath();
-        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.moveTo(cx - beamHalfW, cy);
+        ctx.lineTo(cx + beamHalfW, cy);
+        ctx.stroke();
+
+        // 中層マゼンタ光条
+        ctx.shadowColor = '#e879f9';
+        ctx.shadowBlur = 14 * intensity;
+        ctx.strokeStyle = `rgba(232, 121, 249, ${0.9 * intensity})`;
+        ctx.lineWidth = Math.max(1, 6 * intensity);
+        ctx.beginPath();
+        ctx.moveTo(cx - beamHalfW, cy);
+        ctx.lineTo(cx + beamHalfW, cy);
+        ctx.stroke();
+
+        // 中心白芯（高輝度コア）
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 6 * intensity;
+        ctx.strokeStyle = `rgba(255, 255, 255, ${1.0 * intensity})`;
+        ctx.lineWidth = Math.max(0.8, 2.2 * intensity);
+        ctx.beginPath();
+        ctx.moveTo(cx - beamHalfW, cy);
+        ctx.lineTo(cx + beamHalfW, cy);
+        ctx.stroke();
+        ctx.restore();
+
+        // --- 2. 中央4条ダイヤモンド・スターバースト（鋭い星型クロス光冠） ---
+        const rx = 160 * scaleProg; // 水平方向の伸び
+        const ry = 65 * scaleProg; // 垂直方向の伸び
+
+        ctx.save();
+        ctx.shadowColor = '#c084fc';
+        ctx.shadowBlur = 24 * intensity;
+
+        // 星型アストロイドパス
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - ry);
+        ctx.quadraticCurveTo(cx, cy, cx + rx, cy);
+        ctx.quadraticCurveTo(cx, cy, cx, cy + ry);
+        ctx.quadraticCurveTo(cx, cy, cx - rx, cy);
+        ctx.quadraticCurveTo(cx, cy, cx, cy - ry);
+        ctx.closePath();
+
+        const starGrad = ctx.createRadialGradient(cx, cy, 1, cx, cy, Math.max(rx, ry));
+        starGrad.addColorStop(0.0, `rgba(255, 255, 255, ${1.0 * intensity})`);
+        starGrad.addColorStop(0.2, `rgba(245, 208, 254, ${0.95 * intensity})`);
+        starGrad.addColorStop(0.6, `rgba(192, 132, 252, ${0.6 * intensity})`);
+        starGrad.addColorStop(1.0, `rgba(168, 85, 247, 0)`);
+        ctx.fillStyle = starGrad;
         ctx.fill();
+
+        // 星型の白芯コア（さらにシャープな光冠）
+        const coreRx = rx * 0.45;
+        const coreRy = ry * 0.45;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - coreRy);
+        ctx.quadraticCurveTo(cx, cy, cx + coreRx, cy);
+        ctx.quadraticCurveTo(cx, cy, cx, cy + coreRy);
+        ctx.quadraticCurveTo(cx, cy, cx - coreRx, cy);
+        ctx.quadraticCurveTo(cx, cy, cx, cy - coreRy);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.85 * intensity})`;
+        ctx.fill();
+
+        // 中心グロー球
+        const centerR = Math.max(2, 14 * scaleProg);
+        const centerGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, centerR);
+        centerGrad.addColorStop(0, `rgba(255, 255, 255, ${1.0 * intensity})`);
+        centerGrad.addColorStop(0.4, `rgba(232, 121, 249, ${0.8 * intensity})`);
+        centerGrad.addColorStop(1, 'rgba(168, 85, 247, 0)');
+        ctx.fillStyle = centerGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, centerR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
 
-      // 中央の主役：虹色立体ネオン PREMIUM JACKPOT
-      const centerY = 310;
-      const pulse = 1.0 + Math.sin((t - 1.6) * 4) * 0.035;
-
-      ctx.save();
-      ctx.translate(BOARD_WIDTH * 0.5, centerY);
-      ctx.scale(pulse, pulse);
-
-      // 虹色リニアグラデーション
-      const rainbowGrad = ctx.createLinearGradient(-190, 0, 190, 0);
-      rainbowGrad.addColorStop(0.0, '#f43f5e');
-      rainbowGrad.addColorStop(0.2, '#fb923c');
-      rainbowGrad.addColorStop(0.4, '#facc15');
-      rainbowGrad.addColorStop(0.6, '#4ade80');
-      rainbowGrad.addColorStop(0.8, '#38bdf8');
-      rainbowGrad.addColorStop(1.0, '#c084fc');
-
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-
-      // 立体シャドウ（深みのある重厚感）
-      ctx.font = "900 34px 'Segoe UI', sans-serif";
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-      ctx.fillText('PREMIUM JACKPOT', 0, 4);
-
-      // 虹色発光グロー
-      ctx.shadowColor = '#f43f5e';
-      ctx.shadowBlur = 24;
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 4.5;
-      ctx.strokeText('PREMIUM JACKPOT', 0, 0);
-
-      ctx.fillStyle = rainbowGrad;
-      ctx.fillText('PREMIUM JACKPOT', 0, 0);
-
-      // サブタイトル（ゴールド装飾ライン）
-      ctx.shadowColor = '#facc15';
-      ctx.shadowBlur = 10;
-      ctx.font = "800 13px 'Segoe UI', sans-serif";
-      ctx.fillStyle = '#fde047';
-      ctx.fillText('✦ 50 MEDALS OVERDRIVE ✦', 0, 36);
-
-      ctx.restore();
       ctx.restore();
       return;
     }
 
-    // === Stage 4: 3.4s〜4.4s (ソフト明転＆上部に50枚待機) ===
-    const fadeProg = (t - 3.4) / 1.0; // 0 -> 1
+    // === Stage 4: 2.05s〜2.3s (完全な漆黒の静寂・タメ) ===
+    if (t < 2.3) {
+      ctx.save();
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+      ctx.restore();
+      return;
+    }
+
+    // === Stage 5: 2.3s〜4.9s (【案A改】4段階シンクロ！1音目PREMIUM激突→2音目チャージ→3音目JACKPOT激突→4音目大団円最大発光) ===
+    if (t < 4.9) {
+      const elapsed = t - 2.3;
+      const prog = elapsed / 2.6; // 0 -> 1 (じっくり2.6秒間表示)
+      ctx.save();
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+
+      const cx = BOARD_WIDTH * 0.5;
+      const cy = 295;
+      const premY = cy - 28;
+      const jackY = cy + 28;
+
+      // --- 4音目以降 (1.35s〜): 背後で回転するゴッドレイ（神々しい16本放射状光条） ---
+      if (elapsed >= 1.35) {
+        const t4 = elapsed - 1.35;
+        const godrayAlpha = Math.min(1.0, t4 / 0.3);
+        ctx.save();
+        ctx.translate(cx, cy);
+        const rotAngle = t4 * 0.28;
+        ctx.rotate(rotAngle);
+        const rayCount = 16;
+        for (let i = 0; i < rayCount; i++) {
+          const a1 = (i / rayCount) * Math.PI * 2;
+          const a2 = a1 + (Math.PI / rayCount) * 0.55;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.arc(0, 0, 420, a1, a2);
+          ctx.closePath();
+          const rayGrad = ctx.createRadialGradient(0, 0, 25, 0, 0, 420);
+          const rayColor =
+            i % 2 === 0
+              ? `rgba(250, 204, 21, ${0.16 * godrayAlpha})`
+              : `rgba(192, 132, 252, ${0.16 * godrayAlpha})`;
+          rayGrad.addColorStop(0, rayColor);
+          rayGrad.addColorStop(0.65, rayColor);
+          rayGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.fillStyle = rayGrad;
+          ctx.fill();
+        }
+        ctx.restore();
+
+        // 4音目以降の星屑スパーク粒子（60個）
+        for (let i = 0; i < 60; i++) {
+          const seedAngle = i * 2.39996;
+          const speed = 75 + (i % 8) * 38;
+          const dist = Math.min(280, t4 * speed);
+          const px = cx + Math.cos(seedAngle + t4 * 0.25) * dist;
+          const py = cy + Math.sin(seedAngle + t4 * 0.25) * (dist * 0.85);
+          const pr = (Math.sin(t4 * 8 + i) * 0.5 + 0.5) * 2.5 + 1.2;
+          const pAlpha = Math.max(
+            0,
+            (1 - (elapsed / 2.6) * 0.65) * (Math.sin(t4 * 6 + i * 2) * 0.4 + 0.6)
+          );
+          ctx.fillStyle =
+            i % 3 === 0
+              ? `rgba(254, 240, 138, ${pAlpha})`
+              : i % 3 === 1
+              ? `rgba(244, 63, 94, ${pAlpha})`
+              : `rgba(192, 132, 252, ${pAlpha})`;
+          ctx.beginPath();
+          ctx.arc(px, py, pr, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // --- 2音目 (0.45s〜0.90s): 下部JACKPOT位置へのエネルギーチャージ粒子 ---
+      if (elapsed >= 0.45 && elapsed < 0.9) {
+        const t2 = (elapsed - 0.45) / 0.45; // 0 -> 1
+        for (let i = 0; i < 24; i++) {
+          const ang = i * ((Math.PI * 2) / 24) + t2 * 5;
+          const dist = (1 - t2) * 120 + 10;
+          const px = cx + Math.cos(ang) * dist;
+          const py = jackY + Math.sin(ang) * (dist * 0.5);
+          ctx.fillStyle =
+            i % 2 === 0 ? 'rgba(192, 132, 252, 0.75)' : 'rgba(254, 240, 138, 0.75)';
+          ctx.beginPath();
+          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // --- ホワイト閃光フラッシュ（1音目激突時、3音目激突時、4音目合体時） ---
+      let flashAlpha = 0;
+      if (elapsed < 0.08) {
+        flashAlpha = (1 - elapsed / 0.08) * 0.5;
+      } else if (elapsed >= 0.9 && elapsed < 0.98) {
+        flashAlpha = (1 - (elapsed - 0.9) / 0.08) * 0.55;
+      } else if (elapsed >= 1.35 && elapsed < 1.45) {
+        flashAlpha = (1 - (elapsed - 1.35) / 0.1) * 0.65;
+      }
+      if (flashAlpha > 0) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${flashAlpha})`;
+        ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+      }
+
+      // --- 衝撃波リング（1音目: 上部、3音目: 下部） ---
+      if (elapsed < 0.45) {
+        const sp = elapsed / 0.45;
+        const sr = Math.pow(sp, 0.7) * 220;
+        const sa = (1 - sp) * 0.85;
+        ctx.save();
+        ctx.strokeStyle = `rgba(254, 240, 138, ${sa})`;
+        ctx.lineWidth = 4 * (1 - sp);
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.arc(cx, premY, sr, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      if (elapsed >= 0.9 && elapsed < 1.35) {
+        const sp = (elapsed - 0.9) / 0.45;
+        const sr = Math.pow(sp, 0.7) * 260;
+        const sa = (1 - sp) * 0.95;
+        ctx.save();
+        ctx.strokeStyle = `rgba(192, 132, 252, ${sa * 0.8})`;
+        ctx.lineWidth = 8 * (1 - sp);
+        ctx.shadowColor = '#c084fc';
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.arc(cx, jackY, sr, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(254, 240, 138, ${sa})`;
+        ctx.lineWidth = 4 * (1 - sp);
+        ctx.beginPath();
+        ctx.arc(cx, jackY, sr * 0.8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // --- 文字共通スタイル・グラデーション ---
+      const logoGrad = ctx.createLinearGradient(0, -22, 0, 22);
+      logoGrad.addColorStop(0.0, '#ffffff');
+      logoGrad.addColorStop(0.18, '#fef08a');
+      logoGrad.addColorStop(0.48, '#facc15');
+      logoGrad.addColorStop(0.78, '#d97706');
+      logoGrad.addColorStop(1.0, '#451a03');
+
+      // --- 1. 『PREMIUM』描画（1音目: 0.0s〜常時表示） ---
+      {
+        const zoomDur = 0.22;
+        let scale = 1.0;
+        if (elapsed < zoomDur) {
+          const zp = elapsed / zoomDur;
+          const ease = 1 - Math.pow(1 - zp, 3.5);
+          scale = 3.6 - ease * 2.6;
+        } else if (elapsed >= 1.35) {
+          scale = 1.0 + Math.sin((elapsed - 1.35) * 3.5) * 0.025;
+        }
+
+        ctx.save();
+        ctx.translate(cx, premY);
+        ctx.scale(scale, scale);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.font = "900 42px 'Segoe UI Black', 'Impact', sans-serif";
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
+        ctx.fillText('PREMIUM', 0, 5);
+        ctx.fillText('PREMIUM', 0, 3);
+
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = elapsed >= 1.35 ? 35 : 24;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 6.0;
+        ctx.strokeText('PREMIUM', 0, 0);
+
+        ctx.shadowColor = '#c084fc';
+        ctx.shadowBlur = 18;
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 3.0;
+        ctx.strokeText('PREMIUM', 0, 0);
+
+        ctx.fillStyle = logoGrad;
+        ctx.fillText('PREMIUM', 0, 0);
+
+        // 光沢ハイライト
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-160, -22, 320, 14);
+        ctx.clip();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.24)';
+        ctx.fillText('PREMIUM', 0, 0);
+        ctx.restore();
+
+        ctx.restore();
+      }
+
+      // --- 2. 『JACKPOT』描画（3音目: 0.90s〜常時表示） ---
+      if (elapsed >= 0.9) {
+        const t3 = elapsed - 0.9;
+        const zoomDur = 0.22;
+        let scale = 1.0;
+        if (t3 < zoomDur) {
+          const zp = t3 / zoomDur;
+          const ease = 1 - Math.pow(1 - zp, 3.5);
+          scale = 3.8 - ease * 2.8;
+        } else if (elapsed >= 1.35) {
+          scale = 1.0 + Math.sin((elapsed - 1.35) * 3.5) * 0.025;
+        }
+
+        ctx.save();
+        ctx.translate(cx, jackY);
+        ctx.scale(scale, scale);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        ctx.font = "900 48px 'Segoe UI Black', 'Impact', sans-serif";
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
+        ctx.fillText('JACKPOT', 0, 6);
+        ctx.fillText('JACKPOT', 0, 3);
+
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = elapsed >= 1.35 ? 38 : 26;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 6.5;
+        ctx.strokeText('JACKPOT', 0, 0);
+
+        ctx.shadowColor = '#c084fc';
+        ctx.shadowBlur = 20;
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 3.2;
+        ctx.strokeText('JACKPOT', 0, 0);
+
+        ctx.fillStyle = logoGrad;
+        ctx.fillText('JACKPOT', 0, 0);
+
+        // 光沢ハイライト
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-170, -24, 340, 16);
+        ctx.clip();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.24)';
+        ctx.fillText('JACKPOT', 0, 0);
+        ctx.restore();
+
+        ctx.restore();
+      }
+
+      // --- 3. 4音目以降 (1.35s〜): 上下のゴールド装飾モールディングライン完成 ---
+      if (elapsed >= 1.35) {
+        const lineAlpha = Math.min(1.0, (elapsed - 1.35) / 0.2);
+        ctx.save();
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 14;
+        ctx.strokeStyle = `rgba(250, 204, 21, ${0.9 * lineAlpha})`;
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.moveTo(cx - 170, cy - 62);
+        ctx.lineTo(cx + 170, cy - 62);
+        ctx.moveTo(cx - 170, cy + 62);
+        ctx.lineTo(cx + 170, cy + 62);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(254, 240, 138, ${0.65 * lineAlpha})`;
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.moveTo(cx - 130, cy - 67);
+        ctx.lineTo(cx + 130, cy - 67);
+        ctx.moveTo(cx - 130, cy + 67);
+        ctx.lineTo(cx + 130, cy + 67);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.restore();
+      return;
+    }
+
+    // === Stage 6: 4.9s〜6.0s (ソフト明転＆上部に100枚待機メダルウォール) ===
+    const fadeProg = (t - 4.9) / 1.1; // 0 -> 1
     ctx.save();
     // 漆黒からゲーム盤面がソフトに明転
-    ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, 0.85 - fadeProg * 0.65)})`;
+    ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0, 0.82 - fadeProg * 0.65)})`;
     ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
 
     // 盤面最上部に待機する100枚のストックメダルを描画
@@ -2423,7 +2766,7 @@ export class MedalGame {
     ctx.shadowColor = '#ec4899';
     ctx.shadowBlur = 12;
     ctx.fillStyle = '#fbcfe8';
-    ctx.fillText('100 MEDALS READY...', BOARD_WIDTH * 0.5, 82);
+    ctx.fillText('100 MEDALS READY...', BOARD_WIDTH * 0.5, 84);
     ctx.restore();
 
     ctx.restore();

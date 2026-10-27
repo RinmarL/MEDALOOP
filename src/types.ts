@@ -177,6 +177,7 @@ export interface ComputedStats {
   swipePickupUnlocked: boolean; // 下皿スワイプ/長押し回収
   pickupInterval: number; // 長押し回収の間隔
   pickupRadius: number; // 回収タップ判定半径
+  pickupBatchSize: number; // 1回の回収枚数
   holdReloadUnlocked: boolean; // 長押し装填
   reloadInterval: number; // 長押し装填の間隔
   reloadBatchSize: number; // 1回の装填枚数

@@ -500,14 +500,14 @@ html, body {
   color: #f8fafc;
 }
 
-/* 3連アンティークシルバー＆フィリグリープレート（案E原画準拠） */
+/* アンティークシルバー＆フィリグリープレート（上段：所持PT＆ベストスコア7桁対応、下段：強化解放率） */
 .home-stats-grid {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-bottom: 6px;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  margin-bottom: 8px;
 }
 
 .home-stat-item {
@@ -515,6 +515,22 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+}
+
+/* 上段：所持ポイント ＆ ベストスコア（7桁まで余裕で入る横幅） */
+.stat-cyan,
+.stat-gold {
+  grid-column: span 1;
+}
+
+/* 下段：強化解放率（下の段中央にバランスよく配置） */
+.stat-pink {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: 56%;
+  min-width: 150px;
+  max-width: 195px;
 }
 
 /* プレート左右の小さなシルバー巻き耳オーナメント */
@@ -593,10 +609,12 @@ html, body {
 }
 
 .hs-value {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 900;
   font-family: 'Segoe UI Rounded', 'Arial Rounded MT Bold', Consolas, sans-serif;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .cyan-text {
