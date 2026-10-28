@@ -2978,29 +2978,6 @@ export class MedalGame {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    const nozGrad = ctx.createLinearGradient(cx - 38, 12, cx + 38, 12);
-    nozGrad.addColorStop(0, '#1e293b');
-    nozGrad.addColorStop(0.35, '#94a3b8');
-    nozGrad.addColorStop(0.5, '#f8fafc');
-    nozGrad.addColorStop(0.65, '#64748b');
-    nozGrad.addColorStop(1, '#0f172a');
-
-    ctx.fillStyle = nozGrad;
-    ctx.beginPath();
-    ctx.roundRect(cx - 38, 12, 76, 26, [0, 0, 12, 12]);
-    ctx.fill();
-    ctx.strokeStyle = '#00f2fe';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    ctx.fillStyle = '#090d16';
-    ctx.fillRect(cx - 28, 16, 56, 17);
-    ctx.fillStyle = this.loadedQueue.length > 0 ? '#00f2fe' : '#64748b';
-    ctx.font = '900 11px Consolas, monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`CREDIT:${this.loadedQueue.length}`, cx, 25);
-
     const previewX = Math.max(
       WALL_LEFT + MEDAL_RADIUS + 6,
       Math.min(WALL_RIGHT - MEDAL_RADIUS - 6, this.pointerBoardX)
@@ -3012,15 +2989,6 @@ export class MedalGame {
       ctx.globalAlpha = this.dropCooldownTimer > 0 ? 0.35 : 0.82;
       this.drawMedalGraphic(ctx, previewX, 58, MEDAL_RADIUS, nextType, 1.0, 0);
       ctx.restore();
-    } else {
-      ctx.fillStyle = 'rgba(244, 114, 182, 0.75)';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.textAlign = 'center';
-      const guide =
-        this.heldQueue.length > 0
-          ? '↘ 右下の投入口をタップしてメダルを装填！'
-          : '↙ 左下の下皿からメダルをタップして拾おう！';
-      ctx.fillText(guide, cx, 62);
     }
 
     if (this.dropCooldownTimer > 0) {
@@ -3042,6 +3010,11 @@ export class MedalGame {
     }
 
     const ring = this.physics.luckyRing;
+    // 非アクティブ（再出現待機中）は予告（もやもや光）も含め一切描画しない
+    if (!ring.active) {
+      return;
+    }
+
     const isMult = ring.kind === 'mult';
     const mainColor = isMult ? '#fde047' : '#34d399';
     const glowColor = isMult ? 'rgba(250, 204, 21, 0.45)' : 'rgba(52, 211, 153, 0.45)';
@@ -3050,29 +3023,6 @@ export class MedalGame {
     const coreLightColor = isMult ? '#fef08a' : '#a7f3d0';
 
     ctx.save();
-
-    if (!ring.active) {
-      // 1. 再出現待機中（ゲージは完全撤去、再出現直前に微かな光の種がふわりと凝縮）
-      const respawnDur = Math.max(0.1, ring.respawnDuration || 1.0);
-      const ratio = Math.max(0, 1 - ring.respawnTimer / respawnDur);
-      // 再出現の直前（進行度50%以降）のみ淡く光の粒子が凝縮
-      if (ratio > 0.4) {
-        const appearRatio = (ratio - 0.4) / 0.6;
-        const chargeRadius = ring.radius * (0.2 + appearRatio * 0.6);
-        ctx.globalAlpha = appearRatio * 0.7;
-        const coreGrad = ctx.createRadialGradient(ring.x, ring.y, 0, ring.x, ring.y, chargeRadius);
-        coreGrad.addColorStop(0, '#ffffff');
-        coreGrad.addColorStop(0.4, coreLightColor);
-        coreGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = coreGrad;
-        ctx.beginPath();
-        ctx.arc(ring.x, ring.y, chargeRadius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.restore();
-      return;
-    }
 
     // 2. アクティブ時の立体サイバーオーブ（旧リングと同等の半径22pxサイズ感）
     const pulse = Math.sin(ring.pulsePhase * 2.2) * 0.9;
@@ -3313,30 +3263,6 @@ export class MedalGame {
         drawEmitterPod(laser.x1, laser.y1, ang);
         drawEmitterPod(laser.x2, laser.y2, ang + Math.PI);
 
-        ctx.restore();
-      } else if (laser.cooldownDuration - laser.timer < 0.8) {
-        // 出現予兆チャージアップ（エミッター高速点滅＆ガイドロックオンレーザー）
-        const remaining = laser.cooldownDuration - laser.timer;
-        const blinkRate = Math.sin(remaining * 28) * 0.5 + 0.5;
-
-        ctx.save();
-        // 両端エミッター点滅
-        ctx.fillStyle = `rgba(244, 114, 182, ${(0.4 + blinkRate * 0.6).toFixed(2)})`;
-        ctx.shadowColor = '#f472b6';
-        ctx.shadowBlur = 10 * blinkRate;
-        ctx.beginPath();
-        ctx.arc(laser.x1, laser.y1, 4, 0, Math.PI * 2);
-        ctx.arc(laser.x2, laser.y2, 4, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 極細ガイドロックオンビーム
-        ctx.strokeStyle = `rgba(56, 189, 248, ${(0.2 + blinkRate * 0.5).toFixed(2)})`;
-        ctx.lineWidth = 1.4;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.moveTo(laser.x1, laser.y1);
-        ctx.lineTo(laser.x2, laser.y2);
-        ctx.stroke();
         ctx.restore();
       }
     }
