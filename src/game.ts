@@ -409,7 +409,7 @@ export class MedalGame {
       this.skillTree.debugUnlockAll();
       this.stats = this.skillTree.computeStats();
       this.updateTreeUI();
-      sound.playUpgrade(true);
+      sound.playUpgrade();
     });
     this.elBtnTreeDebugPts?.addEventListener('click', () => {
       this.score += 10000;
@@ -618,7 +618,7 @@ export class MedalGame {
     this.elHomeScore.textContent = `${this.score.toLocaleString()} PT`;
     this.elHomeBestScore.textContent = `${this.bestRoundScore.toLocaleString()} PT`;
     this.elHomeCompletion.textContent = `${percent}%`;
-    this.elScore.textContent = this.score.toLocaleString();
+    this.updateScoreHUD();
     this.elTimer.textContent = `${this.stats.roundDuration.toFixed(1)}s`;
     this.elTimerBox.classList.remove('warning');
 
@@ -1106,7 +1106,7 @@ export class MedalGame {
       case 'gold': {
         // ゴールドメダル：黄金フラッシュ＆キラキラ星屑・ゴールドスパークル散布
         this.homeCoinHopVels[bestIdx] = -260;
-        sound.playUpgrade(true);
+        sound.playUpgrade();
 
         const sparkles = [];
         for (let k = 0; k < 12; k++) {
@@ -1565,8 +1565,9 @@ export class MedalGame {
 
     const bounceMult = medal.type === 'bounce' && pin.kind === 'bumper' ? 2.8 : 1.0;
     const feverMult = this.jpFeverTimer > 0 ? 2.0 : 1.0;
+    // ピン衝突得点には接触倍率は掛けず、基礎点×特効×全体倍率×フィーバーで計算
     const raw =
-      pin.baseScore * medal.chargeMultiplier * bounceMult * this.stats.globalScoreMultiplier * feverMult;
+      pin.baseScore * bounceMult * this.stats.globalScoreMultiplier * feverMult;
     const gained = Math.max(1, Math.round(raw));
 
     this.score += gained;
@@ -1614,8 +1615,8 @@ export class MedalGame {
     );
 
     if (medal.type === 'chrono') {
-      this.timeRemaining += 0.8;
-      this.addFloatingText(centerX, POCKET_ENTRY_Y - 28, '+0.8s TIME!', '#f472b6', 1.15);
+      this.timeRemaining += 0.4;
+      this.addFloatingText(centerX, POCKET_ENTRY_Y - 28, '+0.4s TIME!', '#f472b6', 1.15);
     }
 
     const shouldSpawnBonus = pocket.spawnsBonusMedal;
@@ -1936,7 +1937,7 @@ export class MedalGame {
   }
 
   private updateScoreHUD(): void {
-    this.elScore.textContent = this.score.toLocaleString();
+    this.elScore.textContent = this.roundGainedScore.toLocaleString();
   }
 
   private loop(now: number): void {
@@ -2213,7 +2214,7 @@ export class MedalGame {
     this.drawCornerShooters(ctx);
     this.drawTopDispenser(ctx);
 
-    // 3. サイバー・カタパルト＆スプリット・レーザー描画
+    // 3. サイバー・カタパルト＆スプリットライン描画
     this.drawCyberCatapults(ctx);
     this.drawSplitLasers(ctx);
 
@@ -3137,7 +3138,7 @@ export class MedalGame {
     ctx.restore();
   }
 
-  // スプリット・レーザー（通過メダル分裂ネオンライン）描画：本格SF高エネルギーレーザー
+  // スプリットライン（通過メダル分裂ネオンライン）描画：最大3回通過で消滅
   private drawSplitLasers(ctx: CanvasRenderingContext2D): void {
     for (const laser of this.physics.splitLasers) {
       const dx = laser.x2 - laser.x1;
@@ -4452,9 +4453,7 @@ export class MedalGame {
       };
     }
 
-    sound.playUpgrade(
-      node.category === 'milestone' || node.category === 'medal' || node.category === 'core'
-    );
+    sound.playUpgrade();
     this.saveGame();
     this.updateTreeUI();
   }

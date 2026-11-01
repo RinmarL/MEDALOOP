@@ -26,7 +26,8 @@ export interface MedalEntity {
   passedPocket: boolean;
   lastPinHitId: number;
   pinHitCooldown: number;
-  splitCooldown?: number; // スプリットレーザー連続分裂防止クールダウン
+  contactCooldown?: number; // メダル同士接触倍率加算クールダウン
+  splitCooldown?: number; // スプリットライン連続分裂防止クールダウン
   trail: TrailPoint[];
 }
 
@@ -44,8 +45,9 @@ export interface PinEntity {
 export interface StopperBar {
   id: number;
   x1: number;
+  y1: number;
   x2: number;
-  y: number;
+  y2: number;
   thickness: number;
   active: boolean;
   timer: number;
@@ -64,7 +66,10 @@ export interface SplitLaser {
   activeDuration: number; // 5.0s
   cooldownDuration: number; // 3.0s
   pulsePhase: number;
+  splitCount: number; // 1回の出現期間中の通過分裂回数（最大3回で消滅）
 }
+
+export type SplitLine = SplitLaser;
 
 export interface CyberCatapult {
   id: number;
@@ -185,13 +190,15 @@ export interface ComputedStats {
   basePocketScore: number; // ポケット基本得点
   globalScoreMultiplier: number; // 全体スコア倍率
   pinLayoutTier: number; // ピン増設段階 (0〜4)
-  splitLaserCount: number; // スプリット・レーザー出現本数 (0: なし, 1: 1本, 2: 2本)
+  splitLaserCount: number; // スプリットライン出現本数 (0: なし, 1: 1本, 2: 2本)
   catapultUnlocked: boolean; // サイバー・カタパルト（最上部ループ打ち上げ）有効化
   stopperCount: number; // 周期ストッパー数 (後方互換・0固定)
   stopperCooldown: number; // ストッパー再出現時間
   stopperWidthRatio: number; // ストッパー幅比率
-  contactChargeRate: number; // メダル同士の接触による倍率上昇率/秒
-  contactMaxMultiplier: number; // 接触倍率上限
+  contactChargeRate: number; // メダル同士の接触による倍率上昇率/秒 (後方互換)
+  contactMaxMultiplier: number; // 接触倍率上限（初期x2.0、強化でx3.0→x6.0→x10.0）
+  pinChargeGain: number; // ピン/バンパー接触時の倍率上昇量（初期0.1、強化で0.2→0.3→0.4）
+  medalChargeGain: number; // メダル同士接触時の倍率上昇量（初期0.4、強化で0.4→0.6→0.8）
   bonusPocketUnlocked: boolean; // +MEDALポケット有効化
   bonusMedalExtraChance: number; // +MEDALポケットで2枚出る確率
   extraStartMedals: number; // 初期5枚に加わる追加メダル数

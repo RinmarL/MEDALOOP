@@ -35,7 +35,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'r1_0',
     name: '投下間隔短縮 I',
-    description: '投下クールタイム -10%',
+    description: '投下クールタイム短縮（Lv3で約0.73秒）',
     ...polar(ORBIT_R1, -90),
     maxLevel: 3,
     baseCost: 8,
@@ -157,7 +157,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'medal_5',
     name: 'クロノメダル追加',
-    description: '初期メダルにクロノメダル（得点x3・入賞時+0.8秒）を+1枚追加',
+    description: '初期メダルにクロノメダル（得点x3・入賞時+0.4秒）を+1枚追加',
     ...polar(ORBIT_R4, 70),
     maxLevel: 1,
     baseCost: 920,
@@ -256,8 +256,8 @@ export const SKILL_NODES: SkillNodeDef[] = [
   // === 右上セクター（第2円: -54°, -18°） ===
   {
     id: 'r2_0',
-    name: 'スプリット・レーザー I',
-    description: '盤面に分裂レーザー出現（通過でメダル分裂、5秒維持→3秒消滅）',
+    name: 'スプリットライン I',
+    description: '盤面に分裂ライン出現（メダル通過で分裂、最大3回で消滅）',
     ...polar(ORBIT_R2, -54),
     maxLevel: 1,
     baseCost: 65,
@@ -280,8 +280,8 @@ export const SKILL_NODES: SkillNodeDef[] = [
   },
   {
     id: 'outer_0',
-    name: 'スプリット・レーザー II',
-    description: '分裂レーザーの出現本数 1本→2本',
+    name: 'スプリットライン II',
+    description: 'スプリットラインの出現本数 1本→2本',
     ...polar(ORBIT_R4, -50),
     maxLevel: 1,
     baseCost: 700,
@@ -306,7 +306,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'drop_spd_2',
     name: '投下間隔短縮 II',
-    description: '投下クールタイム -10%（最大Lv3で-30%）',
+    description: '投下クールタイム短縮（Lv3で約0.47秒）',
     ...polar(ORBIT_R3, -12.9),
     maxLevel: 3,
     baseCost: 180,
@@ -318,7 +318,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'drop_spd_3',
     name: '投下間隔短縮 III',
-    description: '投下クールタイム -10%（最大Lv3で-30%、計-90%の超連射）',
+    description: '投下クールタイム短縮（最大Lv3で秒間5枚・0.20秒の連射）',
     ...polar(ORBIT_R4, -10),
     maxLevel: 3,
     baseCost: 450,
@@ -373,7 +373,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     maxLevel: 1,
     baseCost: 80,
     costScale: 1,
-    neighbors: ['r1_4', 'm2_1', 'outer_2'],
+    neighbors: ['r1_4', 'm2_1', 'm2_4'],
     category: 'stat',
     icon: '🎰',
   },
@@ -402,23 +402,23 @@ export const SKILL_NODES: SkillNodeDef[] = [
     icon: '🎰',
   },
   {
-    id: 'outer_2',
-    name: '獲得ポイント強化 II',
-    description: '全獲得スコア x1.5 ＆ 初期メダル +1枚',
+    id: 'm2_4',
+    name: '制限時間延長 IV',
+    description: '制限時間 +1秒',
     ...polar(ORBIT_R3, 64.3),
-    maxLevel: 1,
-    baseCost: 800,
-    costScale: 1,
-    neighbors: ['star_2', 'outer_4'],
+    maxLevel: 3,
+    baseCost: 110,
+    costScale: 1.8,
+    neighbors: ['star_2'],
     category: 'stat',
-    icon: '🌾',
+    icon: '⏱',
   },
 
   // === 左下セクター（第2円: 126°, 162°） ===
   {
     id: 'r2_3',
     name: '接触強化Ⅰ',
-    description: 'メダル同士の接触で得点倍率上昇（最大x2.5）',
+    description: '接触倍率上限 x2.0→x3.0 ＆ ピン接触上昇 +0.1→+0.2',
     ...polar(ORBIT_R2, 126),
     maxLevel: 1,
     baseCost: 95,
@@ -430,7 +430,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'star_4',
     name: '接触強化Ⅱ',
-    description: 'メダル接触強化の最大倍率 x2.5→x6.0',
+    description: '接触倍率上限 x3.0→x4.5 ＆ ピン+0.3 / メダル+0.6',
     ...polar(ORBIT_R3, 112.5),
     maxLevel: 1,
     baseCost: 450,
@@ -442,7 +442,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'outer_3',
     name: 'ストラグル',
-    description: 'メダル1枚の基礎点数 +4 ＆ 接触最大倍率 x6.0→x10.0',
+    description: 'メダル基礎点 +2 ＆ 接触最大 x6.0 ＆ ピン+0.4 / メダル+0.8',
     ...polar(ORBIT_R4, 130),
     maxLevel: 1,
     baseCost: 900,
@@ -513,7 +513,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     icon: '⏱',
   },
 
-  // === 左上セクター（第2円: -162°, -126°：回収特化ライン ＆ 制限時間延長ライン） ===
+  // === 左上セクター（第2円: -162°, -126°：回収特化ライン ＆ 獲得ポイント強化ライン） ===
   {
     id: 'r2_4',
     name: '制限時間延長 III',
@@ -522,21 +522,33 @@ export const SKILL_NODES: SkillNodeDef[] = [
     maxLevel: 3,
     baseCost: 40,
     costScale: 1.7,
-    neighbors: ['r1_5', 'm2_4'],
+    neighbors: ['r1_5', 'outer_2'],
     category: 'stat',
     icon: '⏱',
   },
   {
-    id: 'm2_4',
-    name: '制限時間延長 IV',
-    description: '制限時間 +1秒',
+    id: 'outer_2',
+    name: '獲得ポイント強化 II',
+    description: '全獲得スコア +50%（1.5倍）＆ 初期メダル +1枚',
     ...polar(ORBIT_R3, -135),
-    maxLevel: 3,
-    baseCost: 110,
-    costScale: 1.8,
-    neighbors: ['r2_4'],
+    maxLevel: 1,
+    baseCost: 800,
+    costScale: 1,
+    neighbors: ['r2_4', 'outer_4'],
     category: 'stat',
-    icon: '⏱',
+    icon: '🌾',
+  },
+  {
+    id: 'outer_4',
+    name: '獲得ポイント強化 III',
+    description: '全獲得スコア +50%（計2.0倍）＆ 初期メダル +1枚',
+    ...polar(ORBIT_R4, -130),
+    maxLevel: 1,
+    baseCost: 1000,
+    costScale: 1,
+    neighbors: ['outer_2'],
+    category: 'stat',
+    icon: '🌾',
   },
   {
     id: 'm2_0',
@@ -585,18 +597,6 @@ export const SKILL_NODES: SkillNodeDef[] = [
     neighbors: ['pickup_spd_1'],
     category: 'stat',
     icon: '⚡',
-  },
-  {
-    id: 'outer_4',
-    name: '獲得ポイント強化 III',
-    description: '全獲得スコア x1.5 ＆ 初期メダル +1枚',
-    ...polar(ORBIT_R4, 50),
-    maxLevel: 1,
-    baseCost: 1000,
-    costScale: 1,
-    neighbors: ['outer_2'],
-    category: 'stat',
-    icon: '🌾',
   },
 ];
 
@@ -678,14 +678,12 @@ export class SkillTreeState {
     if (lv('star_3') > 0) specialMedals.push('plasma');
     if (lv('medal_5') > 0) specialMedals.push('chrono');
 
-    // 投下クールタイム（初期 1.0秒）
-    // 投下間隔短縮 I: 1Lvあたり -10%（最大Lv3で-30%）
-    // 投下間隔短縮 II: 1Lvあたり -10%（最大Lv3で-30%）
-    // 投下間隔短縮 III: 1Lvあたり -10%（最大Lv3で-30%）
-    // 合計最大 -90%（0.10秒）
-    const dropReduction = 0.10 * (lv('r1_0') + lv('drop_spd_2') + lv('drop_spd_3'));
-    let dropCooldown = 1.0 * (1 - Math.min(0.90, dropReduction));
-    dropCooldown = Math.max(0.08, dropCooldown);
+    // 投下クールタイム（初期 1.0秒、最大短縮で 0.20秒＝秒間5枚）
+    // 投下間隔短縮 I〜III（計9段階）で最大 -80%（0.20秒）まで段階的短縮
+    const totalDropSpdLevels = lv('r1_0') + lv('drop_spd_2') + lv('drop_spd_3');
+    const dropReduction = (totalDropSpdLevels / 9) * 0.80;
+    let dropCooldown = 1.0 * (1 - dropReduction);
+    dropCooldown = Math.max(0.20, dropCooldown);
 
     // ベースの制限時間：15.0秒 ＋ 「+1秒（最大3回）」× 5マス（r1_3, r1_1, r2_4, m2_4, outer_1）
     const timeBonusLevels =
@@ -714,18 +712,15 @@ export class SkillTreeState {
     if (lv('outer_5') > 0) basePinScore *= 2;
 
     // メダル1枚の基礎点数は初期 1点
-    const basePocketScore = 1 + lv('r1_2') * 1 + (lv('outer_3') > 0 ? 4 : 0);
+    const basePocketScore = 1 + lv('r1_2') * 1 + (lv('outer_3') > 0 ? 2 : 0);
 
-    // 全体スコア倍率
+    // 全体スコア倍率（ノード outer_2, outer_4 で各+50%、最大2.0倍）
     let globalScoreMultiplier = 1.0;
-    if (lv('outer_2') > 0) globalScoreMultiplier *= 1.5;
-    if (lv('outer_4') > 0) globalScoreMultiplier *= 1.5;
+    if (lv('outer_2') > 0) globalScoreMultiplier += 0.5;
+    if (lv('outer_4') > 0) globalScoreMultiplier += 0.5;
 
     const { unlockedLevels, totalLevels } = this.getCompletionRatio();
     const hexagramCompleted = unlockedLevels >= totalLevels;
-    if (hexagramCompleted) {
-      globalScoreMultiplier *= 3.0;
-    }
 
     // ピン配置ティア (0〜4)
     let pinLayoutTier = 0;
@@ -734,7 +729,7 @@ export class SkillTreeState {
     if (lv('m2_2') >= 1) pinLayoutTier = 3;
     if (lv('outer_5') >= 1) pinLayoutTier = 4;
 
-    // スプリット・レーザー (r2_0: 1本, outer_0: 2本)
+    // スプリットライン (r2_0: 1本, outer_0: 2本)
     let splitLaserCount = 0;
     if (lv('r2_0') > 0) splitLaserCount = 1;
     if (lv('outer_0') > 0) splitLaserCount = 2;
@@ -747,20 +742,29 @@ export class SkillTreeState {
     const stopperCooldown = 3.8;
     const stopperWidthRatio = 1.15;
 
-    // 接触帯電強化
+    // 接触帯電強化（初期値: 上限x2.0, ピン+0.1, メダル+0.4）
     let contactChargeRate = 0;
-    let contactMaxMultiplier = 1.0;
+    let contactMaxMultiplier = 2.0;
+    let pinChargeGain = 0.1;
+    let medalChargeGain = 0.4;
+
     if (lv('r2_3') > 0) {
       contactChargeRate = 0.45;
-      contactMaxMultiplier = 2.5;
+      contactMaxMultiplier = 3.0;
+      pinChargeGain = 0.2;
+      medalChargeGain = 0.4;
     }
     if (lv('star_4') > 0) {
       contactChargeRate = 0.95;
-      contactMaxMultiplier = 6.0;
+      contactMaxMultiplier = 4.5;
+      pinChargeGain = 0.3;
+      medalChargeGain = 0.6;
     }
     if (lv('outer_3') > 0) {
       contactChargeRate = 1.35;
-      contactMaxMultiplier = 10.0;
+      contactMaxMultiplier = 6.0;
+      pinChargeGain = 0.4;
+      medalChargeGain = 0.8;
     }
 
     // スロット倍率（star_2でx2, star_0でさらにx2 => 最大x4）
@@ -813,6 +817,8 @@ export class SkillTreeState {
       stopperWidthRatio,
       contactChargeRate,
       contactMaxMultiplier,
+      pinChargeGain,
+      medalChargeGain,
       bonusPocketUnlocked: false,
       bonusMedalExtraChance: 0,
       extraStartMedals,

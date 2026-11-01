@@ -126,8 +126,7 @@ export class PhysicsWorld {
 
     let pinId = 1;
 
-    // 1. 中央3連トライアングルバンパー（ネオン発光・大反発）
-    const bumperMult = stats.pinLayoutTier >= 4 ? 4.5 : stats.pinLayoutTier >= 2 ? 3.5 : 2.5;
+    // 1. 中央3連トライアングルバンパー（ネオン発光・大反発・ピンと同じ基礎点）
     const bumpers = [
       { x: 168, y: 246, radius: 23 }, // 上左バンパー
       { x: 292, y: 246, radius: 23 }, // 上右バンパー
@@ -139,7 +138,7 @@ export class PhysicsWorld {
         x: b.x,
         y: b.y,
         radius: b.radius,
-        baseScore: Math.round(stats.basePinScore * bumperMult),
+        baseScore: stats.basePinScore,
         kind: 'bumper',
         hitAnim: 0,
         electrifiedTimer: 0,
@@ -230,16 +229,14 @@ export class PhysicsWorld {
       let radius = 6.0;
       let mult = 1.0;
 
-      // Tier向上でバンパー横ピンがミニバンパー化
+      // Tier向上でバンパー横ピンがミニバンパー化（高反発・触れやすさ向上のみ、得点はピンと同一）
       if (stats.pinLayoutTier >= 2 && (idx === 7 || idx === 8)) {
         isBumper = true;
         radius = 9.0;
-        mult = 2.0;
       }
       if (stats.pinLayoutTier >= 3 && (idx === 11 || idx === 12)) { // 中段中央
         isBumper = true;
         radius = 8.5;
-        mult = 2.0;
       }
 
       this.pins.push({
@@ -247,7 +244,7 @@ export class PhysicsWorld {
         x: pt.x,
         y: pt.y,
         radius,
-        baseScore: Math.round(stats.basePinScore * mult),
+        baseScore: stats.basePinScore,
         kind: isBumper ? 'bumper' : 'normal',
         hitAnim: 0,
         electrifiedTimer: 0,
@@ -262,7 +259,7 @@ export class PhysicsWorld {
       );
     }
 
-    // 4. スプリット・レーザー（長さ約42px、5秒維持→3秒消滅、通過でメダル分裂）
+    // 4. スプリットライン（長さ約52px、最大3回通過または5秒で消滅→3秒クールダウン、通過でメダル分裂）
     if (stats.splitLaserCount >= 1) {
       const line1 = this.getRandomLaserLine();
       this.splitLasers.push({
@@ -273,6 +270,7 @@ export class PhysicsWorld {
         activeDuration: 5.0,
         cooldownDuration: 3.0,
         pulsePhase: 0,
+        splitCount: 0,
       });
     }
     if (stats.splitLaserCount >= 2) {
@@ -285,6 +283,7 @@ export class PhysicsWorld {
         activeDuration: 5.0,
         cooldownDuration: 3.0,
         pulsePhase: Math.PI,
+        splitCount: 0,
       });
     }
 
@@ -405,6 +404,7 @@ export class PhysicsWorld {
       passedPocket: zone === 'tray',
       lastPinHitId: -1,
       pinHitCooldown: 0,
+      contactCooldown: 0,
       trail: [{ x: clampedX, y }],
     };
     this.medals.push(medal);
@@ -444,7 +444,7 @@ export class PhysicsWorld {
       }
     }
 
-    // スプリット・レーザーのサイクル更新（5秒出現→3秒消滅）
+    // スプリットラインのサイクル更新（最大3回通過または5秒で消滅→3秒クールダウン）
     for (const laser of this.splitLasers) {
       laser.pulsePhase += clampedDelta * 6.0;
       laser.timer += clampedDelta;
@@ -459,6 +459,7 @@ export class PhysicsWorld {
         laser.y2 = newLine.y2;
         laser.active = true;
         laser.timer = 0;
+        laser.splitCount = 0; // 新規出現時に通過カウントリセット
       }
     }
 
@@ -495,6 +496,9 @@ export class PhysicsWorld {
 
       if (m.pinHitCooldown > 0) {
         m.pinHitCooldown = Math.max(0, m.pinHitCooldown - DT);
+      }
+      if (m.contactCooldown && m.contactCooldown > 0) {
+        m.contactCooldown = Math.max(0, m.contactCooldown - DT);
       }
       if (m.contactFlash > 0) {
         m.contactFlash = Math.max(0, m.contactFlash - DT * 3);
@@ -741,25 +745,30 @@ export class PhysicsWorld {
         const maxBonus = 1.5 + Math.max(0, stats.contactMaxMultiplier - 3.0);
         const limitA = getBase(a.type) + maxBonus;
         const limitB = getBase(b.type) + maxBonus;
-        const gain = 1.2 * DT;
-        if (a.chargeMultiplier < limitA) {
-          a.chargeMultiplier = Math.min(limitA, a.chargeMultiplier + gain);
-          a.contactFlash = 0.7;
+        const mGain = stats.medalChargeGain || 0.4;
+        if ((!a.contactCooldown || a.contactCooldown <= 0) && a.chargeMultiplier < limitA) {
+          a.chargeMultiplier = Math.min(limitA, +(a.chargeMultiplier + mGain).toFixed(2));
+          a.contactFlash = 0.8;
+          a.contactCooldown = 0.12;
         }
-        if (b.chargeMultiplier < limitB) {
-          b.chargeMultiplier = Math.min(limitB, b.chargeMultiplier + gain);
-          b.contactFlash = 0.7;
+        if ((!b.contactCooldown || b.contactCooldown <= 0) && b.chargeMultiplier < limitB) {
+          b.chargeMultiplier = Math.min(limitB, +(b.chargeMultiplier + mGain).toFixed(2));
+          b.contactFlash = 0.8;
+          b.contactCooldown = 0.12;
         }
         callbacks.onMedalElectrified?.(a, b);
-      } else if (stats.contactChargeRate > 0) {
-        const gain = stats.contactChargeRate * DT;
-        if (a.chargeMultiplier < stats.contactMaxMultiplier) {
-          a.chargeMultiplier = Math.min(stats.contactMaxMultiplier, a.chargeMultiplier + gain);
-          a.contactFlash = 0.6;
+      } else if (stats.contactMaxMultiplier > 1.0) {
+        // メダル同士の接触で触れるたびに倍率上昇（多重判定防止クールダウン0.12s）
+        const mGain = stats.medalChargeGain || 0.4;
+        if ((!a.contactCooldown || a.contactCooldown <= 0) && a.chargeMultiplier < stats.contactMaxMultiplier) {
+          a.chargeMultiplier = Math.min(stats.contactMaxMultiplier, +(a.chargeMultiplier + mGain).toFixed(2));
+          a.contactFlash = 0.7;
+          a.contactCooldown = 0.12;
         }
-        if (b.chargeMultiplier < stats.contactMaxMultiplier) {
-          b.chargeMultiplier = Math.min(stats.contactMaxMultiplier, b.chargeMultiplier + gain);
-          b.contactFlash = 0.6;
+        if ((!b.contactCooldown || b.contactCooldown <= 0) && b.chargeMultiplier < stats.contactMaxMultiplier) {
+          b.chargeMultiplier = Math.min(stats.contactMaxMultiplier, +(b.chargeMultiplier + mGain).toFixed(2));
+          b.contactFlash = 0.7;
+          b.contactCooldown = 0.12;
         }
       }
     }
@@ -873,6 +882,15 @@ export class PhysicsWorld {
             m.pinHitCooldown = 0.09;
             pin.hitAnim = 1.0;
 
+            // ピン / バンパー接触時に倍率上昇！
+            if (stats.contactMaxMultiplier > 1.0) {
+              if (m.chargeMultiplier < stats.contactMaxMultiplier) {
+                const pGain = stats.pinChargeGain || 0.1;
+                m.chargeMultiplier = Math.min(stats.contactMaxMultiplier, +(m.chargeMultiplier + pGain).toFixed(2));
+                m.contactFlash = 0.5;
+              }
+            }
+
             // ① プラズマメダル衝突時：ピンを3秒間帯電
             if (m.type === 'plasma') {
               pin.electrifiedTimer = 3.0;
@@ -902,7 +920,7 @@ export class PhysicsWorld {
       }
     }
 
-    // スプリット・レーザーとの交差判定（通過でメダル2枚に分裂！）
+    // スプリットラインとの交差判定（通過でメダル2枚に分裂！最大3回通過で消滅）
     if (m.zone === 'board' && (!m.splitCooldown || m.splitCooldown <= 0)) {
       for (let i = 0; i < this.splitLasers.length; i++) {
         const laser = this.splitLasers[i];
@@ -918,7 +936,7 @@ export class PhysicsWorld {
         const py = laser.y1 + t * dy;
         const distSq = (m.x - px) ** 2 + (m.y - py) ** 2;
         if (distSq <= (MEDAL_RADIUS + 3) ** 2) {
-          // レーザー通過！メダル分裂！
+          // スプリットライン通過！メダル分裂！
           m.splitCooldown = 0.55;
           m.vx -= 32;
           m.contactFlash = 0.8;
@@ -942,6 +960,13 @@ export class PhysicsWorld {
           });
 
           callbacks.onLaserSplit?.(px, py);
+
+          // 1回の出現中に3回通過したら即座に消滅（インフレ防止）
+          laser.splitCount++;
+          if (laser.splitCount >= 3) {
+            laser.active = false;
+            laser.timer = 0; // クールダウン開始
+          }
           break;
         }
       }
