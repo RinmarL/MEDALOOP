@@ -353,6 +353,19 @@
                 </button>
               </div>
 
+              <!-- プレイ・強化ボタンの下中央：緑系統の3Dエナメル「ルーン」ボタン -->
+              <div class="home-sub-actions">
+                <button id="btn-open-runes" class="neon-btn rune-btn" title="ルーン装備">
+                  <span class="crystal-btn-inner">
+                    <span class="crystal-btn-gloss"></span>
+                    <span class="rune-btn-content">
+                      <span id="home-rune-icon" class="home-rune-icon">☄️</span>
+                      <span class="btn-main-text rune-text">ルーン</span>
+                    </span>
+                  </span>
+                </button>
+              </div>
+
               <button id="btn-reset-save" class="reset-link-btn">セーブデータを初期化</button>
             </div>
           </div>
@@ -402,6 +415,40 @@
               <span class="crystal-btn-inner">
                 <span class="crystal-btn-gloss"></span>
                 <span class="btn-main-text">確認</span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- ルーン選択モーダルオーバーレイ -->
+        <div id="rune-modal" class="home-overlay hidden">
+          <div class="home-card rune-card">
+            <div class="neon-badge rune-badge-header">RUNE SANCTUARY</div>
+            <h2 class="rune-modal-title">メダルルーン</h2>
+            <p class="rune-modal-desc">通常メダル全体に神秘の星辰の力を付与します</p>
+
+            <!-- 装着中ソケット表示 -->
+            <div class="rune-socket-box">
+              <div class="rune-socket-header">
+                <span class="rune-socket-title">装備中ソケット (枠 1)</span>
+                <span class="rune-socket-sub">※スキルツリーで第2枠解放予定</span>
+              </div>
+              <div class="rune-active-display" id="rune-active-display">
+                <span class="active-rune-icon" id="active-rune-icon">☄️</span>
+                <div class="active-rune-text">
+                  <span class="active-rune-name" id="active-rune-name">コメット</span>
+                  <span class="active-rune-desc" id="active-rune-desc">反発係数 +15%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ルーンカード一覧 -->
+            <div class="rune-card-list" id="rune-card-list"></div>
+
+            <button id="btn-close-runes" class="neon-btn close-rune-btn">
+              <span class="crystal-btn-inner">
+                <span class="crystal-btn-gloss"></span>
+                <span class="btn-main-text">閉じる</span>
               </span>
             </button>
           </div>

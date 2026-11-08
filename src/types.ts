@@ -174,6 +174,52 @@ export interface SkillNodeDef {
   icon: string;
 }
 
+export type RuneId = 'comet' | 'solar' | 'twinkle' | 'sagittarius';
+
+export interface RuneDef {
+  id: RuneId;
+  name: string;
+  icon: string;
+  tier: 'initial' | 'intermediate';
+  description: string;
+  detail: string;
+}
+
+export const RUNE_DEFINITIONS: RuneDef[] = [
+  {
+    id: 'comet',
+    name: 'コメット',
+    icon: '☄️',
+    tier: 'initial',
+    description: '反発係数 +15%',
+    detail: '通常メダルが軽快に跳ね回り、ピンアクションと循環速度が大幅アップ！',
+  },
+  {
+    id: 'solar',
+    name: 'ソーラー',
+    icon: '☀️',
+    tier: 'initial',
+    description: '中央ポケット入賞時 +50 PT',
+    detail: '中央のスロットに入賞した時、追加で固定+50 PTを獲得するスナイパールーン！',
+  },
+  {
+    id: 'twinkle',
+    name: 'トゥインクル',
+    icon: '✨',
+    tier: 'initial',
+    description: '中央以外ポケット入賞時 +10 PT',
+    detail: '中央以外の4つのポケットに入賞した時、追加で固定+10 PTを獲得する散らしルーン！',
+  },
+  {
+    id: 'sagittarius',
+    name: 'サジタリウス',
+    icon: '🏹',
+    tier: 'intermediate',
+    description: 'ピン衝突時 5%で会心 +10 PT',
+    detail: 'ピンに衝突した際、5%の確率でクリティカルヒットが発生し+10 PT獲得！（将来の中級ノードで解放）',
+  },
+];
+
 export interface ComputedStats {
   centerSlot4xUnlocked: boolean; // 起点ノード効果：中央スロットを4倍にする
   roundDuration: number; // 初期 20秒
@@ -211,4 +257,5 @@ export interface ComputedStats {
   jpNormalMedalRate: number; // JP時の通常メダル確率（初期0.80、強化で0.70→0.60→0.50）
   jpFeverUnlocked: boolean; // JPフィーバー（5秒間全メダル得点2倍）
   jpFreezeUnlocked: boolean; // JPロングフリーズ（1%で4.4秒演出＆100枚一斉投下）
+  runeCometActive?: boolean; // コメットルーン有効化（通常メダル反発+15%）
 }

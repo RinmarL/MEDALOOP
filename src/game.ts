@@ -35,6 +35,9 @@ import {
   PickupParticle,
   PinEntity,
   PocketSlot,
+  RuneDef,
+  RuneId,
+  RUNE_DEFINITIONS,
   SkillNodeDef,
   SlotInsertAnim,
   WarpEffect,
@@ -220,6 +223,19 @@ export class MedalGame {
   private elBtnOpenTree = document.getElementById('btn-open-tree')!;
   private elBtnResetSave = document.getElementById('btn-reset-save')!;
 
+  // ルーン機能
+  private equippedRunes: RuneId[] = ['comet'];
+
+  // ルーン関連DOM
+  private elBtnOpenRunes = document.getElementById('btn-open-runes') as HTMLButtonElement | null;
+  private elHomeRuneIcon = document.getElementById('home-rune-icon');
+  private elRuneModal = document.getElementById('rune-modal') as HTMLElement | null;
+  private elActiveRuneIcon = document.getElementById('active-rune-icon');
+  private elActiveRuneName = document.getElementById('active-rune-name');
+  private elActiveRuneDesc = document.getElementById('active-rune-desc');
+  private elRuneCardList = document.getElementById('rune-card-list');
+  private elBtnCloseRunes = document.getElementById('btn-close-runes') as HTMLButtonElement | null;
+
   // リザルト画面DOM
   private elResultOverlay = document.getElementById('result-overlay')!;
   private elResGainedScore = document.getElementById('res-gained-score')!;
@@ -258,9 +274,11 @@ export class MedalGame {
 
     this.loadSave();
     this.stats = this.skillTree.computeStats();
+    this.stats.runeCometActive = this.equippedRunes.includes('comet');
     this.physics.setupBoard(this.stats);
 
     this.bindEvents();
+    this.updateRuneUI();
     this.resizeCanvas();
     this.enterHomePhase();
 
@@ -300,6 +318,9 @@ export class MedalGame {
       if (data.clearRecord && typeof data.clearRecord === 'object') {
         this.clearRecord = data.clearRecord;
       }
+      if (Array.isArray(data.equippedRunes) && data.equippedRunes.length > 0) {
+        this.equippedRunes = data.equippedRunes;
+      }
       if (data.levels && typeof data.levels === 'object') {
         for (const k of Object.keys(data.levels)) {
           if (k in this.skillTree.levels) {
@@ -323,6 +344,7 @@ export class MedalGame {
           totalPlayTimeSec: this.totalPlayTimeSec,
           clearRecord: this.clearRecord,
           levels: this.skillTree.levels,
+          equippedRunes: this.equippedRunes,
         })
       );
     } catch {
@@ -356,6 +378,20 @@ export class MedalGame {
       this.enterTreePhase();
     });
 
+    this.elBtnOpenRunes?.addEventListener('click', () => {
+      this.openRuneModal();
+    });
+
+    this.elBtnCloseRunes?.addEventListener('click', () => {
+      this.closeRuneModal();
+    });
+
+    this.elRuneModal?.addEventListener('click', (e) => {
+      if (e.target === this.elRuneModal) {
+        this.closeRuneModal();
+      }
+    });
+
     this.elBtnResetSave.addEventListener('click', () => {
       if (window.confirm('セーブデータを初期化して最初から遊びますか？')) {
         localStorage.removeItem(STORAGE_KEY);
@@ -367,6 +403,8 @@ export class MedalGame {
         this.skillTree = new SkillTreeState();
         this.stats = this.skillTree.computeStats();
         this.selectedNodeId = 'c0';
+        this.equippedRunes = ['comet'];
+        this.updateRuneUI();
         this.enterHomePhase();
       }
     });
@@ -613,12 +651,14 @@ export class MedalGame {
     this.resetJackpotState();
 
     this.stats = this.skillTree.computeStats();
+    this.stats.runeCometActive = this.equippedRunes.includes('comet');
     const { percent } = this.skillTree.getCompletionRatio();
 
     this.elHomeScore.textContent = `${this.score.toLocaleString()} PT`;
     this.elHomeBestScore.textContent = `${this.bestRoundScore.toLocaleString()} PT`;
     this.elHomeCompletion.textContent = `${percent}%`;
     this.updateScoreHUD();
+    this.updateRuneUI();
     this.elTimer.textContent = `${this.stats.roundDuration.toFixed(1)}s`;
     this.elTimerBox.classList.remove('warning');
 
@@ -657,6 +697,96 @@ export class MedalGame {
     this.renderHomeMedalShowcase();
     this.renderHomeHexagramEmblem();
     this.saveGame();
+  }
+
+  // ルーン選択モーダル操作
+  private openRuneModal(): void {
+    if (!this.elRuneModal) return;
+    this.updateRuneUI();
+    this.renderRuneCards();
+    this.elRuneModal.classList.remove('hidden');
+    sound.playMedalClink(0.5);
+  }
+
+  private closeRuneModal(): void {
+    if (!this.elRuneModal) return;
+    this.elRuneModal.classList.add('hidden');
+    sound.playMedalClink(0.35);
+  }
+
+  private equipRune(id: RuneId): void {
+    this.equippedRunes = [id];
+    this.stats.runeCometActive = id === 'comet';
+    this.saveGame();
+    this.updateRuneUI();
+    this.renderRuneCards();
+    sound.playUpgrade();
+  }
+
+  private updateRuneUI(): void {
+    const activeId = this.equippedRunes[0] || 'comet';
+    const activeDef =
+      RUNE_DEFINITIONS.find((r) => r.id === activeId) || RUNE_DEFINITIONS[0];
+
+    if (this.elHomeRuneIcon) {
+      this.elHomeRuneIcon.textContent = activeDef.icon;
+    }
+    if (this.elActiveRuneIcon) {
+      this.elActiveRuneIcon.textContent = activeDef.icon;
+    }
+    if (this.elActiveRuneName) {
+      this.elActiveRuneName.textContent = activeDef.name;
+    }
+    if (this.elActiveRuneDesc) {
+      this.elActiveRuneDesc.textContent = activeDef.description;
+    }
+  }
+
+  private renderRuneCards(): void {
+    if (!this.elRuneCardList) return;
+    this.elRuneCardList.innerHTML = '';
+
+    const currentEquipped = this.equippedRunes[0] || 'comet';
+
+    for (const r of RUNE_DEFINITIONS) {
+      const isEquipped = currentEquipped === r.id;
+      const isLocked = r.tier === 'intermediate';
+
+      const card = document.createElement('div');
+      card.className = `rune-item-card${isEquipped ? ' equipped' : ''}${isLocked ? ' locked' : ''}`;
+
+      const tierBadge =
+        r.tier === 'initial'
+          ? '<span class="rune-card-tag">初期ルーン</span>'
+          : '<span class="rune-card-tag intermediate">🔒 中級ノード</span>';
+
+      const statusBadge = isEquipped
+        ? '<span class="rune-status-badge">装備中</span>'
+        : isLocked
+          ? '<span class="rune-status-badge" style="color:#64748b;border-color:#475569;background:rgba(51,65,85,0.4);">未解放</span>'
+          : '<span class="rune-status-badge" style="color:#94a3b8;border-color:rgba(148,163,184,0.4);background:transparent;">タップで装着</span>';
+
+      card.innerHTML = `
+        <div class="rune-card-icon">${r.icon}</div>
+        <div class="rune-card-info">
+          <div class="rune-card-name-row">
+            <span class="rune-card-name">${r.name}</span>
+            ${tierBadge}
+          </div>
+          <div class="rune-card-desc">${r.description}</div>
+          <div class="rune-card-detail">${r.detail}</div>
+        </div>
+        ${statusBadge}
+      `;
+
+      if (!isLocked) {
+        card.addEventListener('click', () => {
+          this.equipRune(r.id);
+        });
+      }
+
+      this.elRuneCardList.appendChild(card);
+    }
   }
 
   // ホーム画面の六芒星ミニエンブレム描画（現在のスキルツリー解放状況を縮小投影）
@@ -1584,6 +1714,19 @@ export class MedalGame {
       pin.kind === 'bumper' ? '#f472b6' : '#00f2fe',
       pin.kind === 'bumper' ? 1.1 : 0.88
     );
+
+    // 🏹 サジタリウス（中級ノード枠）：通常メダル衝突時 5%で会心 +10 PT
+    if (
+      this.equippedRunes.includes('sagittarius') &&
+      medal.type === 'normal' &&
+      Math.random() < 0.05
+    ) {
+      const crit = 10;
+      this.score += crit;
+      this.roundGainedScore += crit;
+      this.addFloatingText(pin.x, pin.y - 28, `+${crit} 🏹会心!`, '#f472b6', 1.2);
+    }
+
     this.updateScoreHUD();
   }
 
@@ -1599,19 +1742,46 @@ export class MedalGame {
       feverMult;
     const gained = Math.max(1, Math.round(raw));
 
-    this.score += gained;
-    this.roundGainedScore += gained;
-    if (gained > this.roundMaxSingleHit) {
-      this.roundMaxSingleHit = gained;
+    // 通常メダルへのルーン効果適用
+    let runeBonus = 0;
+    let runeName = '';
+    if (medal.type === 'normal') {
+      // ☀️ ソーラー：中央ポケット（index === 2）入賞時 +50 PT
+      if (this.equippedRunes.includes('solar') && pocket.index === 2) {
+        runeBonus = 50;
+        runeName = '☀️ソーラー!';
+      }
+      // ✨ トゥインクル：中央以外（index !== 2）ポケット入賞時 +10 PT
+      else if (this.equippedRunes.includes('twinkle') && pocket.index !== 2) {
+        runeBonus = 10;
+        runeName = '✨トゥインクル!';
+      }
+    }
+
+    const totalGained = gained + runeBonus;
+    this.score += totalGained;
+    this.roundGainedScore += totalGained;
+    if (totalGained > this.roundMaxSingleHit) {
+      this.roundMaxSingleHit = totalGained;
     }
 
     const centerX = (pocket.x1 + pocket.x2) * 0.5;
+    const txt = runeName
+      ? `+${totalGained} PT (${runeName})`
+      : feverMult > 1
+        ? `+${gained} PT (x2!)`
+        : `+${gained} PT`;
+
     this.addFloatingText(
       centerX,
       POCKET_ENTRY_Y - 8,
-      feverMult > 1 ? `+${gained} PT (x2!)` : `+${gained} PT`,
-      pocket.scoreMultiplier >= 4 ? '#00f2fe' : '#fde047',
-      pocket.scoreMultiplier >= 4 ? 1.25 : 1.05
+      txt,
+      runeBonus > 0
+        ? '#fde047'
+        : pocket.scoreMultiplier >= 4
+          ? '#00f2fe'
+          : '#fde047',
+      pocket.scoreMultiplier >= 4 || runeBonus > 0 ? 1.25 : 1.05
     );
 
     if (medal.type === 'chrono') {

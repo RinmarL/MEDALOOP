@@ -831,6 +831,7 @@ export class SkillTreeState {
       jpNormalMedalRate,
       jpFeverUnlocked: lv('jp_fever') > 0,
       jpFreezeUnlocked: lv('jp_freeze') > 0,
+      runeCometActive: false,
     };
   }
 }

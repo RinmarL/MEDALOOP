@@ -185,7 +185,7 @@ export class PhysicsWorld {
       },
     ];
 
-    // 3. 釘（ピン）配置：洗練された抜け感と完璧な千鳥ダイヤモンド対称配置（計24本）
+    // 3. 釘（ピン）配置：洗練された抜け感と完璧な千鳥ダイヤモンド対称配置（案1: チャッカーガード型・計24本）
     const pinCoords = [
       // 上部1列目 (5本：レールから流れてきたメダルを優しく中央へ振り分け)
       { x: 130, y: 175 },
@@ -202,13 +202,12 @@ export class PhysicsWorld {
       { x: 94, y: 286 },
       { x: 366, y: 286 },
 
-      // バンパー下・中段受け (6本：5スロットへ綺麗に散らす千鳥配置)
-      { x: 80, y: 376 },
+      // バンパー下・中段受け (5本：中央キーストーンピンを軸に美しく散らす千鳥配置)
+      { x: 75, y: 376 },
       { x: 140, y: 376 },
-      { x: 200, y: 376 },
-      { x: 260, y: 376 },
+      { x: 230, y: 410 }, // ユーザー指定：画像下端付近（y: 365 -> 410）へ移動
       { x: 320, y: 376 },
-      { x: 380, y: 376 },
+      { x: 385, y: 376 },
 
       // スロット境界スプリット (4本：4本の仕切り棒の直上ピッタリに配置)
       { x: 105, y: 448 },
@@ -216,10 +215,11 @@ export class PhysicsWorld {
       { x: 272, y: 448 },
       { x: 355, y: 448 },
 
-      // 各スロット直上誘導 (5本：5つのスロット中央の直上に配置)
+      // 最下段・各スロット誘導＆中央チャッカーガード (6本：門番ピン間隔48px・高低差4pxチルトでピラミッドスタック完全防止)
       { x: 64, y: 496 },
       { x: 147, y: 496 },
-      { x: 230, y: 496 },
+      { x: 206, y: 494 },
+      { x: 254, y: 498 },
       { x: 313, y: 496 },
       { x: 396, y: 496 },
     ];
@@ -234,7 +234,7 @@ export class PhysicsWorld {
         isBumper = true;
         radius = 9.0;
       }
-      if (stats.pinLayoutTier >= 3 && (idx === 11 || idx === 12)) { // 中段中央
+      if (stats.pinLayoutTier >= 3 && idx === 11) { // 中段中央キーストーンピン
         isBumper = true;
         radius = 8.5;
       }
@@ -722,6 +722,18 @@ export class PhysicsWorld {
     b.x += nx * push;
     b.y += ny * push;
 
+    // 上下に重なり合ったメダル同士の横滑り落とし（ピラミッド・アーチスタック防止）
+    if (Math.abs(ny) > 0.4 && Math.abs(nx) < 0.35) {
+      const slide = (nx >= 0 ? 1 : -1) * 60;
+      if (a.y < b.y) {
+        a.vx -= slide * DT * 60;
+        b.vx += slide * DT * 60;
+      } else {
+        b.vx += slide * DT * 60;
+        a.vx -= slide * DT * 60;
+      }
+    }
+
     const tx = -ny;
     const ty = nx;
 
@@ -821,18 +833,19 @@ export class PhysicsWorld {
     const r = m.radius;
 
     // 盤面ゾーンの左右外壁
+    const wallCometMult = stats.runeCometActive && m.type === 'normal' ? 1.15 : 1.0;
     if (m.x - r < WALL_LEFT) {
       m.x = WALL_LEFT + r;
       if (m.vx < 0) {
         const approach = -m.vx;
-        m.vx = approach < CONTACT_NORMAL_THRESHOLD ? 0 : approach * RESTITUTION;
+        m.vx = approach < CONTACT_NORMAL_THRESHOLD ? 0 : approach * (RESTITUTION * wallCometMult);
         m.vy *= approach < CONTACT_NORMAL_THRESHOLD ? TANGENT_CONTACT_RETENTION : TANGENT_COLLISION_RETENTION;
       }
     } else if (m.x + r > WALL_RIGHT) {
       m.x = WALL_RIGHT - r;
       if (m.vx > 0) {
         const approach = m.vx;
-        m.vx = approach < CONTACT_NORMAL_THRESHOLD ? 0 : -approach * RESTITUTION;
+        m.vx = approach < CONTACT_NORMAL_THRESHOLD ? 0 : -approach * (RESTITUTION * wallCometMult);
         m.vy *= approach < CONTACT_NORMAL_THRESHOLD ? TANGENT_CONTACT_RETENTION : TANGENT_COLLISION_RETENTION;
       }
     }
@@ -852,6 +865,13 @@ export class PhysicsWorld {
         m.x += nx * overlap;
         m.y += ny * overlap;
 
+        // ピン頭頂部（ny < -0.1）での静止・スタック防止（常時外向きへの転がり滑落力）
+        if (ny < -0.1 && pin.kind === 'normal') {
+          const rollSign = Math.abs(nx) > 0.02 ? Math.sign(nx) : (m.id % 2 === 0 ? 1 : -1);
+          m.vx += rollSign * 180 * DT * 60;
+          m.x += rollSign * 0.35;
+        }
+
         const tx = -ny;
         const ty = nx;
         const vn = m.vx * nx + m.vy * ny;
@@ -859,27 +879,39 @@ export class PhysicsWorld {
 
         if (vn < 0) {
           const approach = -vn;
-          let bounceRestitution = pin.kind === 'bumper' ? 1.05 : RESTITUTION;
+          const pinCometMult = stats.runeCometActive && m.type === 'normal' ? 1.15 : 1.0;
+          let bounceRestitution = (pin.kind === 'bumper' ? 1.05 : RESTITUTION) * pinCometMult;
           if (m.type === 'bounce') bounceRestitution = Math.min(1.35, bounceRestitution * 1.3);
 
           const newVn =
             approach < CONTACT_NORMAL_THRESHOLD && pin.kind === 'normal'
               ? 0
-              : Math.max(approach * bounceRestitution, pin.kind === 'bumper' ? 260 : 0);
+              : Math.max(approach * bounceRestitution, pin.kind === 'bumper' ? 260 * pinCometMult : 0);
           let newVt =
             vt * (approach < CONTACT_NORMAL_THRESHOLD ? TANGENT_CONTACT_RETENTION : TANGENT_COLLISION_RETENTION);
 
-          // ピン真上でのバランス停止（スタック）防止
-          if (Math.abs(nx) < 0.08 && Math.abs(newVt) < 15) {
-            newVt += (m.id % 2 === 0 ? 1 : -1) * 28;
+          // ピン真上・頭頂部でのバランス停止（スタック＆微振動ミルフィーユ連射）防止
+          // ny < -0.5 かつ |nx| < 0.35 （ピン上部頂上エリアに乗っかった場合、左右へツルッと滑り落とす）
+          if (ny < -0.5 && Math.abs(nx) < 0.35) {
+            const slideDir =
+              Math.abs(nx) > 0.02
+                ? (nx > 0 ? 1 : -1)
+                : (m.vx !== 0 ? Math.sign(m.vx) : (m.id % 2 === 0 ? 1 : -1));
+            newVt += slideDir * 65;
+            m.vx += slideDir * 45;
+          } else if (Math.abs(nx) < 0.08 && Math.abs(newVt) < 15) {
+            newVt += (m.id % 2 === 0 ? 1 : -1) * 35;
           }
 
           m.vx = newVn * nx + newVt * tx;
           m.vy = newVn * ny + newVt * ty;
 
-          if (m.lastPinHitId !== pin.id || m.pinHitCooldown <= 0) {
+          const isSamePin = m.lastPinHitId === pin.id;
+          if (!isSamePin || m.pinHitCooldown <= 0) {
             m.lastPinHitId = pin.id;
-            m.pinHitCooldown = 0.09;
+            // 同一ピン連続バウンド時は0.40秒クールダウンでミルフィーユ連射を防止
+            // 別のピンに当たった際は即座に発火可能
+            m.pinHitCooldown = 0.40;
             pin.hitAnim = 1.0;
 
             // ピン / バンパー接触時に倍率上昇！
