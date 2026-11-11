@@ -405,6 +405,8 @@ export class PhysicsWorld {
       lastPinHitId: -1,
       pinHitCooldown: 0,
       contactCooldown: 0,
+      boardElapsedSec: 0,
+      pinBounceCount: 0,
       trail: [{ x: clampedX, y }],
     };
     this.medals.push(medal);
@@ -507,10 +509,15 @@ export class PhysicsWorld {
         m.splitCooldown = Math.max(0, m.splitCooldown - DT);
       }
 
-      // 1) 重力を速度に加算（盤面ゾーンは最高落下速度をキャップ）
-      m.vy += GRAVITY * DT;
+      // 1) 重力を速度に加算（盤面上の通常メダルはコメット+15% / ケンタウルス+20%で落下高速化）
+      const fallSpeedMult =
+        m.zone === 'board' && m.type === 'normal'
+          ? 1.0 + (stats.runeCometActive ? 0.15 : 0) + (stats.runeCentaurusActive ? 0.20 : 0)
+          : 1.0;
+      m.vy += GRAVITY * fallSpeedMult * DT;
       if (m.zone === 'board') {
-        m.vy = Math.min(MAX_FALL_SPEED, m.vy);
+        m.vy = Math.min(MAX_FALL_SPEED * fallSpeedMult, m.vy);
+        m.boardElapsedSec += DT;
       }
 
       // 2) 速度方向と逆向きに摩擦で減速（毎秒900の一定減速、反転しない）
@@ -832,8 +839,8 @@ export class PhysicsWorld {
   private resolveBoardConstraints(m: MedalEntity, stats: ComputedStats, callbacks: PhysicsCallbacks): void {
     const r = m.radius;
 
-    // 盤面ゾーンの左右外壁
-    const wallCometMult = stats.runeCometActive && m.type === 'normal' ? 1.15 : 1.0;
+    // 盤面ゾーンの左右外壁（コメット：通常メダルの反発係数 -15%）
+    const wallCometMult = stats.runeCometActive && m.type === 'normal' ? 0.85 : 1.0;
     if (m.x - r < WALL_LEFT) {
       m.x = WALL_LEFT + r;
       if (m.vx < 0) {
@@ -879,7 +886,7 @@ export class PhysicsWorld {
 
         if (vn < 0) {
           const approach = -vn;
-          const pinCometMult = stats.runeCometActive && m.type === 'normal' ? 1.15 : 1.0;
+          const pinCometMult = stats.runeCometActive && m.type === 'normal' ? 0.85 : 1.0;
           let bounceRestitution = (pin.kind === 'bumper' ? 1.05 : RESTITUTION) * pinCometMult;
           if (m.type === 'bounce') bounceRestitution = Math.min(1.35, bounceRestitution * 1.3);
 
@@ -912,6 +919,7 @@ export class PhysicsWorld {
             // 同一ピン連続バウンド時は0.40秒クールダウンでミルフィーユ連射を防止
             // 別のピンに当たった際は即座に発火可能
             m.pinHitCooldown = 0.40;
+            m.pinBounceCount++;
             pin.hitAnim = 1.0;
 
             // ピン / バンパー接触時に倍率上昇！
@@ -988,6 +996,8 @@ export class PhysicsWorld {
             lastPinHitId: -1,
             pinHitCooldown: 0,
             splitCooldown: 0.55,
+            boardElapsedSec: 0,
+            pinBounceCount: 0,
             trail: [{ x: m.x + 8, y: m.y }],
           });
 

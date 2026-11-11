@@ -187,7 +187,7 @@ html, body {
   touch-action: none;
 }
 
-/* ① ホーム画面（案F：キルティングベルベット＆ぷっくりエナメル・クリスタル枠） ＆ ② リザルト画面オーバーレイ */
+/* ① ホーム画面（案B-1：コンステレーション・ノクターン＆スターチャート・ネオン枠） ＆ ② リザルト画面オーバーレイ */
 .home-svg-defs {
   position: absolute;
   width: 0;
@@ -198,12 +198,12 @@ html, body {
 .home-overlay {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 42%, #24173e 0%, #110a20 65%, #080510 100%);
+  background: radial-gradient(circle at 50% 35%, #0d1a36 0%, #060b19 68%, #02050d 100%);
   backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 12px;
+  padding: 8px 10px;
   z-index: 30;
 }
 
@@ -214,114 +214,107 @@ html, body {
 .home-card {
   width: 100%;
   max-width: 410px;
-  background: linear-gradient(180deg, rgba(34, 24, 62, 0.96) 0%, rgba(16, 11, 32, 0.98) 100%);
-  border: 3px solid #cbd5e1;
-  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(16, 28, 56, 0.96) 0%, rgba(8, 14, 30, 0.98) 100%);
+  border: 2px solid rgba(186, 230, 253, 0.72);
+  border-radius: 26px;
   padding: 20px 18px 16px;
   text-align: center;
   box-shadow:
-    0 14px 36px rgba(4, 2, 12, 0.85),
-    0 0 24px rgba(125, 211, 252, 0.25),
-    0 0 24px rgba(244, 114, 182, 0.25);
+    0 14px 36px rgba(2, 5, 16, 0.9),
+    0 0 22px rgba(103, 232, 249, 0.22);
   position: relative;
 }
 
-/* 案E：セレスティアル・アーチ型フレーム（宵闇ベルベット星空＆淡いミルキーパステルグラデーション） */
-.celestial-frame-card {
-  max-width: 410px;
+/* 案B-1：外側角丸星図枠 ＋ 内側二重ネオンアーチ */
+.b1-frame-card {
+  max-width: 416px;
   height: 100%;
-  max-height: 770px;
-  padding: 8px 8px 10px;
-  border-radius: 36px;
-  /* 外周プラチナシルバーモールディング枠 */
-  border: 2px solid #e2e8f0;
-  background: linear-gradient(160deg, #382856 0%, #1d1332 50%, #2a1b44 100%);
+  max-height: 784px;
+  padding: 6px;
+  border: none;
+  border-radius: 30px;
+  background: radial-gradient(ellipse at 50% 24%, #0f1f42 0%, #081229 52%, #030714 100%);
   box-shadow:
-    0 16px 44px rgba(4, 2, 12, 0.95),
-    0 0 28px rgba(125, 211, 252, 0.22),
-    0 0 28px rgba(244, 114, 182, 0.22),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.9),
-    inset 0 -2px 4px rgba(15, 7, 28, 0.7);
+    0 18px 46px rgba(1, 3, 12, 0.95),
+    0 0 30px rgba(56, 189, 248, 0.16);
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
-/* 外枠四隅の繊細なローズゴールド・ワイヤーフィリグリーSVG */
-.celestial-spandrel-svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* セレスティアル・アーチ型発光チューブ枠（全周を滑らかに巡る淡いミルキーグラデーション） */
-.celestial-arch-tube-wrap {
+/* 外側アイスシアン角丸矩形フレーム */
+.b1-outer-frame {
   position: relative;
-  z-index: 2;
   flex: 1;
   width: 100%;
-  border-radius: 184px 184px 26px 26px;
-  padding: 5px; /* ネオンチューブの立体的な太さ */
-  /* 案E原画完全準拠：急激な境界を廃し、円周に沿って自然に色相が溶け合うミルキーパステルグラデーション！ */
-  background: conic-gradient(
-    from 180deg at 50% 45%,
-    #d8b4fe 0deg,     /* 最下部中央：柔らかなラベンダー */
-    #a5f3fc 45deg,    /* 左下：淡いパステルシアン */
-    #7dd3fc 90deg,    /* 左側面：スカイシアン */
-    #bae6fd 140deg,   /* 左上アーチ肩：淡水色 */
-    #f1f5f9 180deg,   /* アーチ最頂部：ミルキーホワイト・ペール */
-    #fce7f3 220deg,   /* 右上アーチ肩：ペールピンク */
-    #f472b6 270deg,   /* 右側面：サクラピンク */
-    #fbcfe8 315deg,   /* 右下：パステルピンク */
-    #d8b4fe 360deg    /* 最下部中央へ滑らかに循環 */
-  );
+  min-height: 0;
+  border-radius: 26px;
+  border: 1.6px solid rgba(186, 230, 253, 0.78);
+  padding: 8px;
+  background: radial-gradient(ellipse at 50% 35%, rgba(16, 36, 74, 0.42) 0%, rgba(4, 9, 22, 0.85) 100%);
   box-shadow:
-    0 10px 30px rgba(4, 2, 12, 0.85),
-    0 0 20px rgba(125, 211, 252, 0.35),
-    0 0 20px rgba(244, 114, 182, 0.35),
-    inset 0 1px 2px rgba(255, 255, 255, 0.85);
+    0 0 12px rgba(125, 211, 252, 0.28),
+    inset 0 0 16px rgba(56, 189, 248, 0.14);
   display: flex;
   flex-direction: column;
 }
 
-/* チューブ最外周の極細シルバーハイライトモールディング */
-.celestial-arch-tube-wrap::before {
-  content: '';
+/* 外周フレーム四隅・上下中央のシャンパンゴールド4点星 */
+.b1-corner-star {
   position: absolute;
-  inset: -1.5px;
-  border-radius: 185.5px 185.5px 27.5px 27.5px;
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  width: 16px;
+  height: 16px;
   pointer-events: none;
-  z-index: 3;
+  z-index: 8;
+  filter: drop-shadow(0 0 5px rgba(254, 240, 138, 0.85));
 }
 
-/* 宵闇ベルベット星空の内装コンテナ */
-.celestial-arch-interior {
+.b1-corner-star.tl { top: 0px; left: 0px; }
+.b1-corner-star.tc { top: -8px; left: 50%; transform: translateX(-50%); width: 15px; height: 15px; }
+.b1-corner-star.tr { top: 0px; right: 0px; }
+.b1-corner-star.bl { bottom: 0px; left: 0px; }
+.b1-corner-star.bc { bottom: -8px; left: 50%; transform: translateX(-50%); width: 15px; height: 15px; }
+.b1-corner-star.br { bottom: 0px; right: 0px; }
+
+/* 内側：二重ネオンアーチ枠（外太線＋内細線） */
+.b1-arch-wrap {
   position: relative;
-  z-index: 2;
   flex: 1;
   width: 100%;
-  border-radius: 179px 179px 21px 21px;
-  border: 1.8px solid #cbd5e1;
-  background: radial-gradient(ellipse at 50% 18%, #22143b 0%, #140b25 60%, #0d061c 100%);
+  min-height: 0;
+  border-radius: 208px 208px 20px 20px;
+  border: 2.3px solid #d4f4ff;
+  padding: 4px;
   box-shadow:
-    inset 0 0 24px rgba(4, 2, 12, 0.95),
-    inset 0 0 16px rgba(125, 211, 252, 0.12),
-    inset 0 0 16px rgba(244, 114, 182, 0.12),
-    0 0 4px rgba(0, 0, 0, 0.6);
+    0 0 12px rgba(125, 211, 252, 0.62),
+    0 0 26px rgba(56, 189, 248, 0.25),
+    inset 0 0 12px rgba(125, 211, 252, 0.35);
+  display: flex;
+  flex-direction: column;
+}
+
+.b1-arch-interior {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border-radius: 202px 202px 16px 16px;
+  border: 1.2px solid rgba(186, 230, 253, 0.72);
+  background: radial-gradient(ellipse at 50% 22%, #0e2046 0%, #08132d 50%, #040917 100%);
+  box-shadow:
+    inset 0 0 28px rgba(2, 6, 18, 0.92),
+    inset 0 0 14px rgba(103, 232, 249, 0.14);
   padding: 12px 14px 10px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  align-items: stretch;
   overflow: hidden;
 }
 
-/* 宵闇のベルベット星空SVG */
-.celestial-nightsky-svg {
+/* 星図・星座・星雲背景SVG */
+.b1-nightsky-svg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -330,99 +323,144 @@ html, body {
   z-index: 0;
 }
 
-/* セレスティアル柔らかなアンビエント光彩 */
-.celestial-ambient-glow {
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(circle at 14% 35%, rgba(125, 211, 252, 0.15) 0%, transparent 55%),
-    radial-gradient(circle at 86% 35%, rgba(244, 114, 182, 0.15) 0%, transparent 55%),
-    radial-gradient(circle at 50% 10%, rgba(254, 240, 138, 0.12) 0%, transparent 50%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* ホーム画面右上のぷっくりパール・サウンド切替ボタン */
+/* 右上スパンドレル：案B-1調ナイトグラス・サウンド切替ボタン */
 .plush-sound-btn {
   position: absolute;
   top: 12px;
   right: 12px;
-  z-index: 8;
-  width: 36px;
-  height: 36px;
+  z-index: 9;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  border: 2px solid #f1f5f9;
-  background: linear-gradient(145deg, #e2e8f0 0%, #94a3b8 50%, #475569 100%);
+  border: 1.3px solid rgba(186, 230, 253, 0.58);
+  background: linear-gradient(155deg, rgba(24, 44, 82, 0.78) 0%, rgba(9, 17, 36, 0.92) 100%);
   box-shadow:
-    0 3px 8px rgba(0, 0, 0, 0.6),
-    0 0 10px rgba(244, 114, 182, 0.35),
-    inset 0 2px 2px rgba(255, 255, 255, 0.9);
-  font-size: 16px;
+    0 3px 8px rgba(2, 6, 23, 0.78),
+    0 0 10px rgba(103, 232, 249, 0.22),
+    inset 0 1px 1.5px rgba(224, 242, 254, 0.35);
+  color: #bae6fd;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 6px;
+  transition: transform 0.08s, border-color 0.15s, color 0.15s;
+}
+
+.b1-sound-btn svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.b1-sound-btn .sound-svg-off {
+  display: none;
+}
+
+.b1-sound-btn.is-muted {
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.b1-sound-btn.is-muted .sound-svg-on {
+  display: none;
+}
+
+.b1-sound-btn.is-muted .sound-svg-off {
+  display: block;
 }
 
 .plush-sound-btn:active {
   transform: scale(0.92);
 }
 
-/* 上部中央：アーチ頂点に配置された六芒星メダリオン */
-.hexagram-medallion-wrap {
+/* 上部中央：案B-1 惑星レーダー＆斜め軌道リング付き六芒星メダリオン */
+.hexagram-medallion-wrap.b1-apex-medallion {
   position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 2px;
-  margin-bottom: 2px;
+  width: 112px;
+  height: 80px;
+  margin: 0 auto 2px;
+  flex-shrink: 0;
 }
 
-.hexagram-emblem-box {
+.b1-medallion-orbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 114px;
+  height: 114px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.b1-medallion-orbit.back {
+  z-index: 1;
+}
+
+.b1-medallion-orbit.front {
+  z-index: 4;
+  filter: drop-shadow(0 0 4px rgba(253, 224, 71, 0.55));
+}
+
+.b1-medallion-bezel {
   position: relative;
-  width: 76px;
-  height: 76px;
+  z-index: 2;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   padding: 4px;
-  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 35%, #64748b 70%, #f1f5f9 100%);
+  background: radial-gradient(circle at 50% 50%, #0b1b3c 62%, #1d3c73 88%, #bae6fd 100%);
+  border: 1.8px solid #e0f7ff;
   box-shadow:
-    0 5px 14px rgba(5, 3, 15, 0.8),
-    0 0 16px rgba(125, 211, 252, 0.45),
-    0 0 16px rgba(244, 114, 182, 0.45),
-    inset 0 2px 2px rgba(255, 255, 255, 0.95);
+    0 0 14px rgba(103, 232, 249, 0.72),
+    0 0 28px rgba(56, 189, 248, 0.3),
+    inset 0 0 10px rgba(125, 211, 252, 0.52);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.home-hexagram-canvas {
-  width: 68px;
-  height: 68px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 38%, #281b48 0%, #100920 100%);
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.85);
-  display: block;
-}
-
-.crystal-dome-gloss {
+.b1-medallion-outer-halo {
   position: absolute;
-  top: 6px;
-  left: 14px;
-  right: 14px;
-  height: 24px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.02) 100%);
+  inset: -4.5px;
+  border-radius: 50%;
+  border: 1px dashed rgba(186, 230, 253, 0.65);
+  box-shadow: 0 0 8px rgba(103, 232, 249, 0.45);
   pointer-events: none;
 }
 
-/* タイトルロゴ：洗練されたモダン・ジオメトリック＆∞メダルループ『MEDALOOP』 */
+.home-hexagram-canvas.b1-hex-canvas {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 42%, #0e2450 0%, #061026 70%, #030816 100%);
+  box-shadow: inset 0 0 8px rgba(56, 189, 248, 0.35);
+  display: block;
+}
+
+.b1-medallion-glass-glint {
+  position: absolute;
+  top: 4px;
+  left: 12px;
+  right: 12px;
+  height: 20px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(224, 247, 255, 0.34) 0%, rgba(255, 255, 255, 0.02) 100%);
+  pointer-events: none;
+}
+
+/* タイトルロゴ：案B（コンステレーション・ノクターン） */
 .home-logo-wrap {
   position: relative;
   z-index: 2;
-  margin-top: 2px;
-  margin-bottom: 6px;
+  margin-top: -2px;
+  margin-bottom: 2px;
+  flex-shrink: 0;
 }
 
 .home-title {
@@ -432,9 +470,9 @@ html, body {
   justify-content: center;
 }
 
-.medaloop-logo-svg {
+.medaloop-logo-svg.b1-constellation-logo {
   width: 100%;
-  max-width: 340px;
+  max-width: 344px;
   height: auto;
   display: block;
   overflow: visible;
@@ -471,15 +509,15 @@ html, body {
 .home-clear-banner {
   position: relative;
   z-index: 2;
-  background: linear-gradient(90deg, rgba(250, 204, 21, 0.22), rgba(244, 114, 182, 0.25), rgba(56, 189, 248, 0.22));
-  border: 2px solid #fde047;
+  background: linear-gradient(90deg, rgba(14, 30, 62, 0.85), rgba(22, 46, 88, 0.9), rgba(14, 30, 62, 0.85));
+  border: 1.4px solid rgba(253, 224, 71, 0.72);
   border-radius: 999px;
-  padding: 5px 14px;
-  margin-bottom: 6px;
+  padding: 4px 12px;
+  margin-bottom: 4px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 0 14px rgba(253, 224, 71, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 12px rgba(253, 224, 71, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.35);
 }
 
 .home-clear-banner.hidden {
@@ -489,154 +527,141 @@ html, body {
 .clear-crown {
   font-size: 10.5px;
   font-weight: 900;
-  color: var(--neon-gold);
+  color: #fde68a;
   letter-spacing: 0.06em;
 }
 
 .clear-detail {
   font-size: 10.5px;
   font-weight: 800;
-  font-family: 'Courier New', Consolas, monospace;
-  color: #f8fafc;
+  font-family: 'Outfit', 'Courier New', Consolas, monospace;
+  color: #e0f2fe;
 }
 
-/* アンティークシルバー＆フィリグリープレート（上段：所持PT＆ベストスコア7桁対応、下段：強化解放率） */
+/* ステータスカード（2+1 案B-1フロストガラスプレート） */
 .home-stats-grid {
   position: relative;
   z-index: 2;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 8px;
-  margin-bottom: 8px;
+  gap: 8px 10px;
+  margin-bottom: 6px;
 }
 
-.home-stat-item {
+.b1-stat-card {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-}
-
-/* 上段：所持ポイント ＆ ベストスコア（7桁まで余裕で入る横幅） */
-.stat-cyan,
-.stat-gold {
-  grid-column: span 1;
-}
-
-/* 下段：強化解放率（下の段中央にバランスよく配置） */
-.stat-pink {
-  grid-column: 1 / -1;
-  justify-self: center;
-  width: 56%;
-  min-width: 150px;
-  max-width: 195px;
-}
-
-/* プレート左右の小さなシルバー巻き耳オーナメント */
-.plaque-side-ear {
-  width: 6px;
-  height: 22px;
-  flex-shrink: 0;
-  background: linear-gradient(180deg, #f1f5f9 0%, #94a3b8 50%, #475569 100%);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
-}
-
-.plaque-side-ear.left {
-  border-radius: 6px 0 0 6px;
-  border: 1px solid #cbd5e1;
-  border-right: none;
-  margin-right: -1px;
-}
-
-.plaque-side-ear.right {
-  border-radius: 0 6px 6px 0;
-  border: 1px solid #cbd5e1;
-  border-left: none;
-  margin-left: -1px;
-}
-
-.enamel-plate-inner {
-  position: relative;
-  flex: 1;
   border-radius: 14px;
-  background: linear-gradient(180deg, #24163d 0%, #110720 100%);
-  border: 1.5px solid #cbd5e1;
-  padding: 3px;
+  padding: 7px 6px 8px;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 2px;
-  box-shadow:
-    0 4px 10px rgba(4, 2, 12, 0.75),
-    inset 0 1px 2px rgba(255, 255, 255, 0.7);
+  background: linear-gradient(180deg, rgba(148, 197, 255, 0.16) 0%, rgba(16, 31, 62, 0.78) 46%, rgba(8, 16, 36, 0.92) 100%);
+  backdrop-filter: blur(6px);
   overflow: hidden;
 }
 
-.stat-cyan .enamel-plate-inner {
-  box-shadow: 0 4px 10px rgba(4, 2, 12, 0.75), 0 0 10px rgba(125, 211, 252, 0.25);
+/* 上端の繊細なガラス光沢ハイライト */
+.b1-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+  pointer-events: none;
 }
 
-.stat-gold .enamel-plate-inner {
-  box-shadow: 0 4px 10px rgba(4, 2, 12, 0.75), 0 0 10px rgba(254, 240, 138, 0.25);
+.stat-cyan {
+  grid-column: span 1;
+  border: 1.4px solid rgba(125, 211, 252, 0.78);
+  box-shadow:
+    0 4px 12px rgba(2, 6, 23, 0.62),
+    0 0 12px rgba(56, 189, 248, 0.22),
+    inset 0 1px 0 rgba(224, 247, 255, 0.38);
 }
 
-.stat-pink .enamel-plate-inner {
-  box-shadow: 0 4px 10px rgba(4, 2, 12, 0.75), 0 0 10px rgba(244, 114, 182, 0.25);
+.stat-gold {
+  grid-column: span 1;
+  border: 1.4px solid rgba(253, 224, 71, 0.72);
+  box-shadow:
+    0 4px 12px rgba(2, 6, 23, 0.62),
+    0 0 12px rgba(250, 204, 21, 0.2),
+    inset 0 1px 0 rgba(254, 249, 195, 0.35);
 }
 
-/* 上段：シルバーの台座ラベル */
-.plaque-label-box {
-  background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
-  border-radius: 9px 9px 5px 5px;
-  padding: 2px 3px 1px;
-  text-align: center;
-  box-shadow: inset 0 1px 1px #ffffff, 0 1px 2px rgba(0, 0, 0, 0.4);
+.stat-pink {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: 55%;
+  min-width: 154px;
+  max-width: 196px;
+  border: 1.4px solid rgba(165, 195, 252, 0.65);
+  box-shadow:
+    0 4px 12px rgba(2, 6, 23, 0.62),
+    0 0 12px rgba(147, 197, 253, 0.18),
+    inset 0 1px 0 rgba(224, 242, 254, 0.32);
 }
 
 .hs-label {
-  font-family: 'Zen Maru Gothic', sans-serif;
+  font-family: 'Noto Sans JP', 'Zen Maru Gothic', sans-serif;
   font-size: 11px;
-  font-weight: 900;
-  color: #1e1b4b;
+  font-weight: 700;
+  color: #f1f5f9;
   white-space: nowrap;
-  letter-spacing: 0.02em;
-}
-
-/* 下段：深いインディゴブルーの数値窓 */
-.plaque-val-box {
-  padding: 3px 2px 2px;
-  text-align: center;
+  letter-spacing: 0.05em;
+  opacity: 0.94;
 }
 
 .hs-value {
-  font-size: 16px;
-  font-weight: 900;
-  font-family: 'Segoe UI Rounded', 'Arial Rounded MT Bold', Consolas, sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  font-family: 'Outfit', 'Segoe UI', 'Zen Maru Gothic', sans-serif;
   letter-spacing: 0.02em;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.hs-unit {
+  font-size: 0.68em;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  margin-left: 1px;
 }
 
 .cyan-text {
-  color: #bae6fd;
-  text-shadow: 0 0 8px rgba(125, 211, 252, 0.75);
+  color: #7dd3fc;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.55);
+}
+
+.cyan-text .hs-unit {
+  color: #e0f2fe;
+  text-shadow: none;
 }
 
 .gold-text {
-  color: #fef08a;
-  text-shadow: 0 0 8px rgba(254, 240, 138, 0.75);
+  color: #fcd34d;
+  text-shadow: 0 0 10px rgba(250, 204, 21, 0.5);
+}
+
+.gold-text .hs-unit {
+  color: #fef3c7;
+  text-shadow: none;
 }
 
 .magenta-text {
-  color: #fbcfe8;
-  text-shadow: 0 0 8px rgba(244, 114, 182, 0.75);
+  color: #f472b6;
+  text-shadow: 0 0 10px rgba(244, 114, 182, 0.55);
 }
 
-/* 所持メダル（案E原画準拠：サロン風アーチ型木枠×シルバー・ジュエリーボックス） */
-.home-showcase-box.celestial-jewelry-box {
+/* 所持メダルショーケース（案B-1：星図星空ガラスディスプレイケース） */
+.home-showcase-box.b1-showcase-box {
   position: relative;
   z-index: 2;
-  margin-top: 4px;
+  margin-top: 2px;
   margin-bottom: 6px;
   padding: 0;
   background: transparent;
@@ -644,83 +669,93 @@ html, body {
 
 .showcase-header-pill {
   position: relative;
-  z-index: 5;
-  margin: -9px auto -7px;
+  z-index: 6;
+  margin: 0 auto -11px;
   display: flex;
   align-items: center;
   justify-content: center;
   width: fit-content;
-  padding: 3px 18px;
+  padding: 2.5px 18px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #2a184a 0%, #130826 100%);
-  border: 1.8px solid #e2e8f0;
+  background: linear-gradient(180deg, #1a2d55 0%, #0b162f 100%);
+  border: 1.4px solid rgba(186, 230, 253, 0.85);
   box-shadow:
-    0 3px 8px rgba(0, 0, 0, 0.75),
-    0 0 10px rgba(254, 240, 138, 0.25),
-    inset 0 1px 2px rgba(255, 255, 255, 0.7);
+    0 3px 8px rgba(2, 6, 23, 0.78),
+    0 0 10px rgba(125, 211, 252, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.48);
 }
 
 .showcase-title {
-  font-family: 'Zen Maru Gothic', sans-serif;
-  font-size: 12.5px;
-  font-weight: 900;
+  font-family: 'Noto Sans JP', 'Zen Maru Gothic', sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
   color: #f8fafc;
-  letter-spacing: 0.06em;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 3px rgba(2, 6, 23, 0.9);
 }
 
-/* サロン風アーチ型ジュエリーボックス本体（木枠＋シルバーベゼル） */
-.jewelry-box-interior {
+/* 二重ベベル斜めマイター額縁＆ガラス展示ケース（案B-1忠実再現） */
+.b1-glass-case {
   position: relative;
-  border-radius: 26px 26px 14px 14px;
-  border: 3.5px solid #5c3924; /* 温かみのあるウォールナットウッドトリム */
-  background: #170928;
+  border-radius: 5px;
+  padding: 7px 8px;
+  border: 1.5px solid rgba(214, 240, 255, 0.88);
+  background: linear-gradient(
+    180deg,
+    rgba(214, 238, 255, 0.44) 0%,
+    rgba(136, 178, 224, 0.22) 12%,
+    rgba(30, 58, 102, 0.45) 50%,
+    rgba(136, 178, 224, 0.26) 88%,
+    rgba(214, 238, 255, 0.48) 100%
+  );
   box-shadow:
-    0 8px 24px rgba(4, 2, 12, 0.85),
-    inset 0 0 18px rgba(4, 2, 12, 0.95);
+    0 8px 22px rgba(2, 6, 23, 0.85),
+    0 0 16px rgba(125, 211, 252, 0.22),
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.65),
+    inset 0 -1.5px 2px rgba(186, 230, 253, 0.45);
   overflow: hidden;
-  padding: 0;
 }
 
-/* 内側プラチナシルバーモールディング */
-.jewelry-box-interior::before {
+.b1-case-miter-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ガラスの斜め反射光沢 */
+.b1-glass-case::after {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 22px 22px 10px 10px;
-  border: 1.8px solid rgba(255, 255, 255, 0.75);
+  background: linear-gradient(125deg, rgba(255, 255, 255, 0.14) 0%, transparent 32%, transparent 74%, rgba(186, 230, 253, 0.1) 100%);
   pointer-events: none;
-  z-index: 3;
+  z-index: 4;
 }
 
 .home-medal-canvas {
   position: relative;
   z-index: 2;
   width: 100%;
-  height: 104px; /* 縦幅拡張 */
+  height: 104px;
   display: block;
   cursor: pointer;
+  border-radius: 3px;
+  border: 1px solid rgba(186, 230, 253, 0.42);
+  background: #060f23;
+  box-shadow: inset 0 0 14px rgba(2, 6, 23, 0.88);
 }
 
-/* ボックス下部の木製ウォールナット台座モールディング */
-.jewelry-box-wood-base {
-  position: relative;
-  z-index: 4;
-  height: 8px;
-  border-radius: 0 0 10px 10px;
-  border-top: 1.5px solid #cbd5e1;
-  background: linear-gradient(180deg, #7c4c2e 0%, #442412 100%);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.4), 0 2px 4px rgba(0, 0, 0, 0.6);
-}
-
-/* 下部：左右横並びのぷっくりカプセル型3Dエナメルボタン（案E原画準拠） */
+/* 下部アクションボタン（汎用 .neon-btn はモーダル/リザルト側と互換維持しつつ、#home-overlay 内のみ案B-1仕様へ上書き） */
 .home-actions {
   position: relative;
   z-index: 2;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .neon-btn {
@@ -763,7 +798,6 @@ html, body {
   overflow: hidden;
 }
 
-/* 案E原画準拠：淡く透き通るミルキー水色ジェリー */
 .play-btn .crystal-btn-inner {
   background: linear-gradient(180deg, #bae6fd 0%, #7dd3fc 45%, #38bdf8 85%, #67e8f9 100%);
   border: 1.5px solid rgba(255, 255, 255, 0.85);
@@ -772,7 +806,6 @@ html, body {
     inset 0 -3px 6px rgba(2, 132, 199, 0.55);
 }
 
-/* 案E原画準拠：淡く透き通るミルキーサクラピンクジェリー */
 .tree-btn .crystal-btn-inner {
   background: linear-gradient(180deg, #fbcfe8 0%, #f472b6 45%, #ec4899 85%, #f9a8d4 100%);
   border: 1.5px solid rgba(255, 255, 255, 0.85);
@@ -792,7 +825,6 @@ html, body {
   pointer-events: none;
 }
 
-/* 添付画像1枚目のフォント（Zen Maru Gothic）＆立体アウトラインシャドウ */
 .btn-main-text {
   position: relative;
   z-index: 2;
@@ -823,27 +855,106 @@ html, body {
     0 3px 5px rgba(190, 24, 93, 0.55);
 }
 
-/* 添付画像1枚目のゴールド丸メダルバッジ「！」 */
+/* ====== 案B-1 ホーム画面専用：星屑入りオーロラクリスタルボタン上書き ====== */
+.b1-frame-card .neon-btn {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.b1-frame-card .crystal-btn-inner {
+  padding: 10px 8px;
+}
+
+.b1-frame-card .play-btn {
+  box-shadow:
+    0 6px 16px rgba(2, 6, 23, 0.78),
+    0 0 18px rgba(103, 232, 249, 0.45);
+}
+
+.b1-frame-card .play-btn .crystal-btn-inner {
+  background:
+    radial-gradient(circle at 22% 32%, rgba(255, 255, 255, 0.92) 0.9px, transparent 1.5px),
+    radial-gradient(circle at 74% 38%, rgba(255, 255, 255, 0.85) 0.8px, transparent 1.4px),
+    radial-gradient(circle at 60% 72%, rgba(255, 255, 255, 0.8) 0.8px, transparent 1.3px),
+    radial-gradient(circle at 36% 68%, rgba(255, 255, 255, 0.72) 0.6px, transparent 1.1px),
+    linear-gradient(172deg, #bdeeff 0%, #74d3fb 34%, #46bcf4 74%, #6fe5fc 100%);
+  border: 1.8px solid rgba(224, 248, 255, 0.92);
+  box-shadow:
+    inset 0 2px 5px rgba(255, 255, 255, 0.85),
+    inset 0 -5px 12px rgba(7, 89, 133, 0.48);
+}
+
+.b1-frame-card .tree-btn {
+  box-shadow:
+    0 6px 16px rgba(2, 6, 23, 0.78),
+    0 0 18px rgba(244, 114, 182, 0.42);
+}
+
+.b1-frame-card .tree-btn .crystal-btn-inner {
+  background:
+    radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.92) 0.8px, transparent 1.4px),
+    radial-gradient(circle at 78% 42%, rgba(255, 255, 255, 0.82) 0.8px, transparent 1.3px),
+    radial-gradient(circle at 48% 72%, rgba(255, 255, 255, 0.75) 0.7px, transparent 1.2px),
+    radial-gradient(circle at 22% 58%, rgba(236, 72, 153, 0.68) 0%, transparent 56%),
+    radial-gradient(circle at 80% 56%, rgba(125, 211, 252, 0.68) 0%, transparent 56%),
+    linear-gradient(135deg, #f9c6e2 0%, #f08cc1 36%, #cfb8f6 70%, #99dcfe 100%);
+  border: 1.8px solid rgba(255, 242, 250, 0.92);
+  box-shadow:
+    inset 0 2px 5px rgba(255, 255, 255, 0.85),
+    inset 0 -5px 12px rgba(157, 23, 77, 0.38);
+}
+
+.b1-frame-card .crystal-btn-gloss {
+  top: 2px;
+  left: 14%;
+  right: 14%;
+  height: 30%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.b1-frame-card .btn-main-text {
+  font-family: 'Noto Sans JP', 'Zen Maru Gothic', sans-serif;
+  font-size: 19.5px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.b1-frame-card .play-text {
+  color: #ffffff;
+  text-shadow:
+    0 1.5px 4px rgba(7, 89, 133, 0.72),
+    0 0 8px rgba(14, 165, 233, 0.45);
+}
+
+.b1-frame-card .tree-text {
+  color: #ffffff;
+  text-shadow:
+    0 1.5px 4px rgba(131, 24, 67, 0.68),
+    0 0 8px rgba(190, 24, 93, 0.38);
+}
+
+/* 案B-1 上品シャンパンゴールド丸バッジ「！」 */
 .notify-badge {
   position: absolute;
   top: -6px;
   right: -4px;
   z-index: 6;
-  width: 25px;
-  height: 25px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fef9c3 0%, #eab308 55%, #ca8a04 100%);
-  color: #78350f;
-  font-family: 'Zen Maru Gothic', sans-serif;
-  font-size: 15px;
-  font-weight: 900;
+  background: radial-gradient(circle at 35% 30%, #fef9c3 0%, #f1cc6b 58%, #c99d3b 100%);
+  color: #1e293b;
+  font-family: 'Outfit', 'Zen Maru Gothic', sans-serif;
+  font-size: 14px;
+  font-weight: 800;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid #fef08a;
+  border: 1.6px solid #fffbeb;
   box-shadow:
-    0 3px 6px rgba(0, 0, 0, 0.65),
-    0 0 10px rgba(234, 179, 8, 0.85);
+    0 3px 6px rgba(2, 6, 23, 0.72),
+    0 0 10px rgba(243, 210, 107, 0.75);
   animation: badge-pulse 0.8s infinite alternate;
 }
 
@@ -865,11 +976,27 @@ html, body {
   z-index: 2;
   background: transparent;
   border: none;
-  color: rgba(203, 213, 225, 0.65);
+  color: rgba(203, 213, 225, 0.72);
   font-size: 10.5px;
   text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
   padding: 2px 8px;
+}
+
+/* 画面高が狭いモバイル端末向けの自動縮小調整 */
+@media (max-height: 700px) {
+  .b1-arch-interior { padding: 8px 12px 6px; }
+  .hexagram-medallion-wrap.b1-apex-medallion { width: 96px; height: 66px; }
+  .b1-medallion-bezel { width: 60px; height: 60px; }
+  .home-hexagram-canvas.b1-hex-canvas { width: 50px; height: 50px; }
+  .b1-medallion-orbit { width: 96px; height: 96px; }
+  .medaloop-logo-svg.b1-constellation-logo { max-width: 295px; }
+  .b1-stat-card { padding: 5px 6px 6px; }
+  .hs-value { font-size: 17px; }
+  .home-medal-canvas { height: 92px; }
+  .b1-frame-card .crystal-btn-inner { padding: 8px 8px; }
+  .b1-frame-card .btn-main-text { font-size: 17.5px; }
 }
 
 /* リザルト画面専用スタイル */
@@ -1388,216 +1515,496 @@ html, body {
 }
 
 /* ==========================================================================
-   ルーン機能（ホーム画面 3Dエナメル緑ボタン ＆ ルーンモーダル）
+   刻印機能（ホーム画面 3Dクリスタル緑ボタン ＆ 刻印モーダル）
    ========================================================================== */
 
 .home-sub-actions {
+  position: relative;
+  z-index: 2;
   display: flex;
   justify-content: center;
   align-items: center;
   width: 100%;
-  margin-top: 10px;
-  margin-bottom: 4px;
+  margin-top: 6px;
+  margin-bottom: 2px;
 }
 
-/* ぷっくりカプセル型 3Dエナメル「ルーン」ボタン（エメラルドグリーン系統） */
-.rune-btn {
-  width: 154px;
-  height: 48px;
-  border-radius: 9999px;
-  padding: 3px;
-  background: linear-gradient(180deg, #34d399 0%, #10b981 40%, #059669 85%, #047857 100%);
+/* 刻印ボタン（汎用定義＋ホーム案B-1専用星屑オーロラクリスタル／ダークロック仕様） */
+.neon-btn.rune-btn {
+  width: calc(50% - 6px);
   box-shadow:
-    0 5px 16px rgba(16, 185, 129, 0.42),
-    0 2px 4px rgba(0, 0, 0, 0.4),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.8),
-    inset 0 -2px 3px rgba(4, 120, 87, 0.6);
-  border: 1px solid rgba(167, 243, 208, 0.6);
-  cursor: pointer;
-  position: relative;
-  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
+    0 5px 14px rgba(4, 2, 12, 0.75),
+    0 0 14px rgba(52, 211, 153, 0.42);
 }
 
-.rune-btn:hover {
-  transform: translateY(-2px) scale(1.02);
-  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 40%, #10b981 85%, #059669 100%);
+.rune-btn .crystal-btn-inner {
+  background: linear-gradient(180deg, #bbf7d0 0%, #6ee7b7 45%, #10b981 85%, #34d399 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
   box-shadow:
-    0 8px 22px rgba(16, 185, 129, 0.6),
-    0 3px 6px rgba(0, 0, 0, 0.35),
-    inset 0 2px 2px rgba(255, 255, 255, 0.95);
-}
-
-.rune-btn:active {
-  transform: translateY(2px) scale(0.98);
-  box-shadow:
-    0 2px 8px rgba(16, 185, 129, 0.4),
-    inset 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-.rune-btn-content {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+    inset 0 2px 4px rgba(255, 255, 255, 0.85),
+    inset 0 -3px 6px rgba(4, 120, 87, 0.55);
   gap: 6px;
-}
-
-.home-rune-icon {
-  font-size: 16px;
-  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.8));
 }
 
 .rune-text {
   color: #ffffff;
-  font-size: 17px;
-  font-weight: 800;
-  letter-spacing: 2px;
-  text-shadow: 0 1px 4px rgba(4, 120, 87, 0.9);
+  text-shadow:
+    0 1.5px 0 #047857,
+    0 -1px 0 #34d399,
+    1.2px 0 0 #047857,
+    -1.2px 0 0 #047857,
+    0 3px 5px rgba(4, 120, 87, 0.55);
 }
 
-/* ルーン選択モーダルカード */
-.rune-card {
-  max-width: 410px;
-  max-height: 90vh;
-  overflow-y: auto;
-  border-color: rgba(52, 211, 153, 0.45);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.75), 0 0 30px rgba(16, 185, 129, 0.25);
-  padding: 18px 18px 16px;
+.b1-frame-card .neon-btn.rune-btn {
+  box-shadow:
+    0 6px 16px rgba(2, 6, 23, 0.78),
+    0 0 18px rgba(52, 211, 153, 0.42);
 }
 
-.rune-badge-header {
-  background: rgba(16, 185, 129, 0.15);
-  border-color: #34d399;
-  color: #a7f3d0;
-  box-shadow: 0 0 10px rgba(52, 211, 153, 0.3);
+.b1-frame-card .rune-btn .crystal-btn-inner {
+  background:
+    radial-gradient(circle at 26% 32%, rgba(255, 255, 255, 0.9) 0.8px, transparent 1.4px),
+    radial-gradient(circle at 74% 38%, rgba(255, 255, 255, 0.82) 0.7px, transparent 1.3px),
+    radial-gradient(circle at 52% 72%, rgba(255, 255, 255, 0.72) 0.7px, transparent 1.2px),
+    linear-gradient(170deg, #9cf0cf 0%, #3ee0aa 36%, #1fbda1 76%, #4ce7d0 100%);
+  border: 1.8px solid rgba(224, 252, 242, 0.92);
+  box-shadow:
+    inset 0 2px 5px rgba(255, 255, 255, 0.82),
+    inset 0 -5px 12px rgba(6, 95, 70, 0.5);
 }
+
+.b1-frame-card .rune-text {
+  color: #ffffff;
+  text-shadow:
+    0 1.5px 4px rgba(6, 78, 59, 0.78),
+    0 0 8px rgba(16, 185, 129, 0.45);
+}
+
+.rune-btn-lock-svg {
+  display: none;
+  position: relative;
+  z-index: 2;
+  width: 17px;
+  height: 17px;
+  color: #94a3b8;
+  filter: drop-shadow(0 1.5px 2px rgba(2, 6, 23, 0.9));
+  flex-shrink: 0;
+}
+
+/* 刻印機能未解放時のホームボタンロック表示（案B-1：暗スモークガラス＋ほのかなエメラルド気配） */
+.neon-btn.rune-btn.is-locked {
+  cursor: not-allowed;
+  opacity: 0.92;
+  box-shadow:
+    0 5px 14px rgba(2, 6, 23, 0.82),
+    0 0 12px rgba(45, 212, 191, 0.14);
+}
+
+.neon-btn.rune-btn.is-locked:hover,
+.neon-btn.rune-btn.is-locked:active {
+  transform: none;
+  filter: none;
+}
+
+.neon-btn.rune-btn.is-locked .crystal-btn-inner {
+  background:
+    radial-gradient(circle at 64% 82%, rgba(45, 212, 191, 0.24) 0%, transparent 58%),
+    radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.45) 0.7px, transparent 1.3px),
+    linear-gradient(180deg, rgba(64, 82, 114, 0.76) 0%, rgba(22, 34, 62, 0.88) 54%, rgba(12, 24, 46, 0.95) 100%);
+  border: 1.5px solid rgba(186, 230, 253, 0.45);
+  box-shadow:
+    inset 0 2px 5px rgba(255, 255, 255, 0.32),
+    inset 0 -4px 10px rgba(2, 6, 23, 0.78);
+}
+
+.b1-frame-card .neon-btn.rune-btn.is-locked .crystal-btn-gloss {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+.neon-btn.rune-btn.is-locked .rune-btn-lock-svg {
+  display: block;
+}
+
+.neon-btn.rune-btn.is-locked .rune-text {
+  color: #cbd5e1;
+  text-shadow:
+    0 1.5px 4px rgba(2, 6, 23, 0.85);
+}
+
+/* 刻印選択モーダル背景＆カード（案D：ゾディアック・グランモワール完全再現版） */
+.zodiac-modal-backdrop {
+  background: radial-gradient(circle at 50% 42%, rgba(15, 22, 50, 0.88) 0%, rgba(4, 6, 16, 0.96) 100%) !important;
+  backdrop-filter: blur(5px);
+}
+
+.zodiac-backdrop-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.zodiac-grimoire-card {
+  position: relative;
+  z-index: 1;
+  max-width: 402px;
+  overflow: visible !important;
+  background: linear-gradient(175deg, #0d132b 0%, #070a18 55%, #090e22 100%) !important;
+  border: 1.5px solid rgba(226, 200, 140, 0.62) !important;
+  border-radius: 6px !important;
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.9),
+    0 0 38px rgba(253, 230, 138, 0.14),
+    inset 0 0 0 4px #060916,
+    inset 0 0 0 5px rgba(203, 213, 225, 0.28) !important;
+  padding: 16px 16px 14px !important;
+}
+
+/* 四隅スカラップ（内向き円弧切り欠き）＆8点星コーナーSVG */
+.grimoire-corner-svg {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  pointer-events: none;
+  z-index: 5;
+  filter: drop-shadow(0 0 4px rgba(253, 230, 138, 0.35));
+}
+.grimoire-corner-svg.tl { top: -2px; left: -2px; }
+.grimoire-corner-svg.tr { top: -2px; right: -2px; transform: scaleX(-1); }
+.grimoire-corner-svg.bl { bottom: -2px; left: -2px; transform: scaleY(-1); }
+.grimoire-corner-svg.br { bottom: -2px; right: -2px; transform: scale(-1, -1); }
 
 .rune-modal-title {
-  font-size: 19px;
+  font-family: 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', sans-serif;
+  font-size: 20px;
   font-weight: 800;
-  letter-spacing: 2px;
-  color: #ffffff;
-  margin: 5px 0 2px;
-  text-shadow: 0 0 12px rgba(52, 211, 153, 0.5);
+  letter-spacing: 5px;
+  margin: 0 0 4px;
+  background: linear-gradient(180deg, #ffffff 0%, #fef3c7 55%, #d4b46c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 10px rgba(253, 230, 138, 0.38));
 }
 
-.rune-modal-desc {
-  font-size: 11px;
-  color: #94a3b8;
-  margin-bottom: 10px;
-}
-
-/* 装着中ソケット表示 */
-.rune-socket-box {
-  background: rgba(15, 23, 42, 0.75);
-  border: 1.5px solid rgba(52, 211, 153, 0.4);
-  border-radius: 12px;
-  padding: 8px 12px;
-  margin-bottom: 10px;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
-}
-
-.rune-socket-header {
+.lunar-divider-wrap {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  justify-content: center;
   margin-bottom: 5px;
 }
 
-.rune-socket-title {
+.lunar-divider-svg {
+  width: 100%;
+  max-width: 280px;
+  height: 17px;
+}
+
+.rune-scope-note {
+  margin: 0 0 8px;
   font-size: 10.5px;
-  font-weight: 800;
-  color: #34d399;
-  letter-spacing: 1px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: rgba(226, 232, 240, 0.82);
+  text-align: center;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
 }
 
-.rune-socket-sub {
-  font-size: 9px;
-  color: #64748b;
-}
-
-.rune-active-display {
-  display: flex;
-  align-items: center;
+/* 装着中ソケット（2枠横並びの四角い黄道紋章スロット・刻印名のみ） */
+.rune-sockets-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(52, 211, 153, 0.3);
-  border-radius: 9px;
-  padding: 6px 10px;
+  margin-bottom: 10px;
 }
 
-.active-rune-icon {
-  font-size: 24px;
-  filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.7));
-}
-
-.active-rune-text {
+.rune-socket-slot {
+  position: relative;
+  border-radius: 10px;
+  padding: 9px 8px 8px;
+  min-height: 108px;
   display: flex;
   flex-direction: column;
-  text-align: left;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
-.active-rune-name {
+.rune-socket-slot.equipped {
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(16, 26, 56, 0.72) 0%, rgba(7, 11, 26, 0.9) 100%);
+  border: 1px solid rgba(226, 200, 140, 0.42);
+  box-shadow:
+    inset 0 0 16px rgba(253, 230, 138, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.rune-socket-slot.equipped:hover {
+  border-color: rgba(253, 230, 138, 0.7);
+  box-shadow:
+    inset 0 0 18px rgba(253, 230, 138, 0.12),
+    0 4px 14px rgba(253, 230, 138, 0.15);
+}
+
+.rune-socket-slot.empty {
+  background: linear-gradient(180deg, rgba(12, 19, 42, 0.62) 0%, rgba(6, 9, 22, 0.85) 100%);
+  border: 1px dashed rgba(226, 200, 140, 0.28);
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.rune-socket-slot.locked {
+  background: linear-gradient(180deg, rgba(9, 13, 28, 0.72) 0%, rgba(4, 6, 16, 0.9) 100%);
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+.zodiac-crest-stage {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zodiac-ring-slot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* ソケット背後の柔らかい星光後光オーラ */
+.zodiac-aura {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.rune-socket-slot.equipped .zodiac-aura {
+  background: radial-gradient(circle, rgba(254, 243, 199, 0.22) 25%, rgba(253, 230, 138, 0.08) 58%, transparent 72%);
+}
+
+.rune-socket-slot.empty .zodiac-aura {
+  background: radial-gradient(circle, rgba(253, 230, 138, 0.08) 20%, transparent 65%);
+}
+
+.rune-socket-slot.locked .zodiac-aura {
+  background: radial-gradient(circle, rgba(226, 232, 240, 0.18) 25%, rgba(148, 163, 184, 0.06) 58%, transparent 72%);
+}
+
+.zodiac-ring-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.zodiac-ring-svg.active-ring {
+  animation: zodiac-spin 65s linear infinite;
+  filter: drop-shadow(0 0 8px rgba(253, 230, 138, 0.35));
+}
+
+.rune-socket-slot.empty .zodiac-ring-svg.active-ring {
+  opacity: 0.48;
+  filter: none;
+  animation-duration: 110s;
+}
+
+@keyframes zodiac-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.socket-slot-icon {
+  position: relative;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rune-socket-slot.equipped .socket-slot-icon {
+  filter: drop-shadow(0 0 7px rgba(253, 230, 138, 0.65));
+}
+
+.rune-socket-slot.empty .socket-slot-icon {
+  color: rgba(253, 230, 138, 0.45);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.rune-socket-slot.locked .socket-slot-icon {
+  width: 28px;
+  height: 28px;
+  opacity: 0.85;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.85));
+}
+
+.engraving-svg-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.socket-slot-name {
   font-size: 13.5px;
-  font-weight: bold;
-  color: #ffffff;
+  font-weight: 800;
+  color: #fefce8;
+  letter-spacing: 0.8px;
+  text-shadow: 0 1px 6px rgba(253, 230, 138, 0.3);
 }
 
-.active-rune-desc {
-  font-size: 10.5px;
-  color: #6ee7b7;
+.rune-socket-slot.empty .socket-slot-name {
+  color: rgba(203, 213, 225, 0.65);
+  font-size: 12.5px;
+  text-shadow: none;
 }
 
-/* ルーンカード一覧 */
+.rune-socket-slot.locked .socket-slot-name {
+  color: #94a3b8;
+  text-shadow: none;
+}
+
+/* 刻印カード一覧（案Dタロット枠コンテナ） */
+.rune-list-chamber {
+  background: rgba(5, 8, 20, 0.72);
+  border: 1px solid rgba(203, 213, 225, 0.18);
+  border-radius: 10px;
+  padding: 7px;
+  margin-bottom: 11px;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.68);
+}
+
 .rune-card-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 5.5px;
+  margin: 0;
+  max-height: 52vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212, 180, 108, 0.35) transparent;
+}
+
+.rune-card-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.rune-card-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rune-card-list::-webkit-scrollbar-thumb {
+  background: rgba(212, 180, 108, 0.38);
+  border-radius: 4px;
 }
 
 .rune-item-card {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(15, 23, 42, 0.65);
-  border: 1.5px solid rgba(148, 163, 184, 0.2);
-  border-radius: 11px;
-  padding: 7px 11px;
+  gap: 9px;
+  background: linear-gradient(90deg, rgba(16, 23, 48, 0.92) 0%, rgba(9, 14, 32, 0.88) 100%) padding-box,
+              linear-gradient(90deg, rgba(212, 180, 108, 0.42), rgba(203, 213, 225, 0.25), rgba(212, 180, 108, 0.42)) border-box;
+  border: 1.2px solid transparent;
+  border-radius: 6px;
+  padding: 6px 10px;
   cursor: pointer;
-  transition: all 0.15s ease;
-  position: relative;
+  transition: transform 0.14s ease, box-shadow 0.16s ease;
   text-align: left;
+  overflow: hidden;
+  flex-shrink: 0;
 }
+
+/* 四隅の唐草（アラベスク）フィリグリー装飾 */
+.card-filigree-corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  color: #d4b46c;
+  pointer-events: none;
+  z-index: 2;
+}
+.card-filigree-corner.tl { top: 2px; left: 2px; }
+.card-filigree-corner.tr { top: 2px; right: 2px; transform: scaleX(-1); }
+.card-filigree-corner.bl { bottom: 2px; left: 2px; transform: scaleY(-1); }
+.card-filigree-corner.br { bottom: 2px; right: 2px; transform: scale(-1, -1); }
 
 .rune-item-card:hover:not(.locked) {
-  border-color: rgba(52, 211, 153, 0.6);
-  background: rgba(15, 23, 42, 0.85);
   transform: translateY(-1px);
+  background: linear-gradient(90deg, rgba(22, 32, 64, 0.95) 0%, rgba(13, 20, 44, 0.92) 100%) padding-box,
+              linear-gradient(90deg, rgba(253, 230, 138, 0.72), rgba(254, 243, 199, 0.5), rgba(253, 230, 138, 0.72)) border-box;
+  box-shadow: 0 2px 10px rgba(253, 230, 138, 0.14);
 }
 
+/* 装備中カードの究極ハイライト（左エメラルドシアン → 右シャンパンゴールド バイカラー発光！） */
 .rune-item-card.equipped {
-  border-color: #10b981;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(6, 78, 59, 0.25) 100%);
-  box-shadow: 0 0 14px rgba(16, 185, 129, 0.35);
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(90deg, rgba(16, 82, 68, 0.45) 0%, rgba(15, 25, 48, 0.92) 52%, rgba(44, 34, 20, 0.9) 100%) padding-box,
+    linear-gradient(90deg, #34d399 0%, #a7f3d0 48%, #fde68a 100%) border-box;
+  box-shadow:
+    -3px 0 14px rgba(52, 211, 153, 0.28),
+    3px 0 14px rgba(253, 230, 138, 0.24),
+    inset 0 0 14px rgba(52, 211, 153, 0.12);
+}
+
+.rune-item-card.equipped .card-filigree-corner.tl,
+.rune-item-card.equipped .card-filigree-corner.bl {
+  color: #6ee7b7;
+  filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.75));
+}
+
+.rune-item-card.equipped .card-filigree-corner.tr,
+.rune-item-card.equipped .card-filigree-corner.br {
+  color: #fde68a;
+  filter: drop-shadow(0 0 4px rgba(253, 230, 138, 0.75));
 }
 
 .rune-item-card.locked {
-  opacity: 0.5;
+  opacity: 0.56;
   cursor: not-allowed;
-  filter: grayscale(0.6);
+  background: linear-gradient(90deg, rgba(10, 14, 28, 0.8) 0%, rgba(7, 9, 20, 0.85) 100%) padding-box,
+              linear-gradient(90deg, rgba(100, 116, 139, 0.3), rgba(71, 85, 105, 0.2), rgba(100, 116, 139, 0.3)) border-box;
 }
 
+.rune-item-card.locked .card-filigree-corner {
+  color: #64748b;
+  opacity: 0.65;
+}
+
+/* 黒丸背景枠を廃し、天体アイコンそのものを大きく発光配置 */
 .rune-card-icon {
-  font-size: 28px;
-  width: 40px;
-  height: 40px;
+  position: relative;
+  z-index: 2;
+  width: 35px;
+  height: 35px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 6px rgba(253, 230, 138, 0.38));
+}
+
+.rune-item-card.equipped .rune-card-icon {
+  filter: drop-shadow(0 0 8px rgba(110, 231, 183, 0.55));
+}
+
+.rune-item-card.locked .rune-card-icon {
+  filter: none;
+  opacity: 0.72;
 }
 
 .rune-card-info {
+  position: relative;
+  z-index: 2;
   flex: 1;
 }
 
@@ -1605,57 +2012,71 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 
 .rune-card-name {
   font-size: 14px;
-  font-weight: bold;
-  color: #ffffff;
-}
-
-.rune-card-tag {
-  font-size: 9px;
   font-weight: 800;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.3);
-}
-
-.rune-card-tag.intermediate {
-  background: rgba(244, 114, 182, 0.15);
-  color: #f472b6;
-  border-color: rgba(244, 114, 182, 0.3);
+  color: #f8fafc;
+  letter-spacing: 0.5px;
 }
 
 .rune-card-desc {
   font-size: 11px;
   font-weight: 600;
-  color: #a7f3d0;
-  margin-bottom: 2px;
+  color: #cbd5e1;
 }
 
-.rune-card-detail {
-  font-size: 10px;
-  color: #94a3b8;
-  line-height: 1.35;
+.rune-item-card.equipped .rune-card-desc {
+  color: #e2e8f0;
 }
 
 .rune-status-badge {
+  position: relative;
+  z-index: 2;
   font-size: 10px;
   font-weight: 800;
-  color: #10b981;
   padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(16, 185, 129, 0.18);
-  border: 1px solid #10b981;
   flex-shrink: 0;
+  letter-spacing: 0.4px;
 }
 
-.close-rune-btn {
+.rune-status-badge.equipped {
+  color: #a7f3d0;
+  background: rgba(6, 78, 59, 0.72);
+  border: 1px solid rgba(52, 211, 153, 0.78);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
+}
+
+/* 「プレイ」「強化」と同じ立体デザイン＋戻るボタン風クールダークスレート配色 */
+.neon-btn.close-rune-btn {
   width: 100%;
-  height: 42px;
-  margin-top: 4px;
+  margin-top: 2px;
+  box-shadow:
+    0 5px 14px rgba(4, 2, 12, 0.85),
+    0 0 12px rgba(71, 85, 105, 0.35);
+}
+
+.close-rune-btn .crystal-btn-inner {
+  background: linear-gradient(180deg, #475569 0%, #334155 45%, #1e293b 85%, #0f172a 100%);
+  border: 1.5px solid rgba(203, 213, 225, 0.72);
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.38),
+    inset 0 -3px 6px rgba(2, 6, 23, 0.85);
+}
+
+.close-rune-btn .crystal-btn-gloss {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.03) 100%);
+}
+
+.close-rune-text {
+  color: #ffffff;
+  text-shadow:
+    0 1.5px 0 #0f172a,
+    0 -1px 0 #64748b,
+    1.2px 0 0 #0f172a,
+    -1.2px 0 0 #0f172a,
+    0 3px 5px rgba(2, 6, 23, 0.85);
 }

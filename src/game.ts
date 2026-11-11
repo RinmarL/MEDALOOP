@@ -38,6 +38,7 @@ import {
   RuneDef,
   RuneId,
   RUNE_DEFINITIONS,
+  getRuneSvgIcon,
   SkillNodeDef,
   SlotInsertAnim,
   WarpEffect,
@@ -223,16 +224,22 @@ export class MedalGame {
   private elBtnOpenTree = document.getElementById('btn-open-tree')!;
   private elBtnResetSave = document.getElementById('btn-reset-save')!;
 
-  // ルーン機能
-  private equippedRunes: RuneId[] = ['comet'];
+  // 刻印機能（解放直後は初期装着なし）
+  private equippedRunes: RuneId[] = [];
+  private lastAltairPocketIdx: number = -1;
+  private altairChainCount: number = 0;
 
-  // ルーン関連DOM
+  // 刻印関連DOM
   private elBtnOpenRunes = document.getElementById('btn-open-runes') as HTMLButtonElement | null;
-  private elHomeRuneIcon = document.getElementById('home-rune-icon');
   private elRuneModal = document.getElementById('rune-modal') as HTMLElement | null;
+  private elRuneSocket1 = document.getElementById('rune-socket-1');
+  private elSocket1RingSlot = document.getElementById('socket1-ring-slot');
   private elActiveRuneIcon = document.getElementById('active-rune-icon');
   private elActiveRuneName = document.getElementById('active-rune-name');
-  private elActiveRuneDesc = document.getElementById('active-rune-desc');
+  private elRuneSocket2 = document.getElementById('rune-socket-2');
+  private elSocket2RingSlot = document.getElementById('socket2-ring-slot');
+  private elSocket2Icon = document.getElementById('socket2-rune-icon');
+  private elSocket2Name = document.getElementById('socket2-rune-name');
   private elRuneCardList = document.getElementById('rune-card-list');
   private elBtnCloseRunes = document.getElementById('btn-close-runes') as HTMLButtonElement | null;
 
@@ -274,7 +281,8 @@ export class MedalGame {
 
     this.loadSave();
     this.stats = this.skillTree.computeStats();
-    this.stats.runeCometActive = this.equippedRunes.includes('comet');
+    this.sanitizeEquippedRunes();
+    this.syncEngravingStats();
     this.physics.setupBoard(this.stats);
 
     this.bindEvents();
@@ -318,13 +326,18 @@ export class MedalGame {
       if (data.clearRecord && typeof data.clearRecord === 'object') {
         this.clearRecord = data.clearRecord;
       }
-      if (Array.isArray(data.equippedRunes) && data.equippedRunes.length > 0) {
-        this.equippedRunes = data.equippedRunes;
+      if (Array.isArray(data.equippedRunes)) {
+        const validIds = new Set(RUNE_DEFINITIONS.map((r) => r.id));
+        this.equippedRunes = data.equippedRunes.filter((id: RuneId) => validIds.has(id));
       }
       if (data.levels && typeof data.levels === 'object') {
         for (const k of Object.keys(data.levels)) {
           if (k in this.skillTree.levels) {
-            this.skillTree.levels[k] = data.levels[k];
+            const nodeDef = SKILL_NODES.find((n) => n.id === k);
+            const rawLv = Number(data.levels[k]) || 0;
+            this.skillTree.levels[k] = nodeDef
+              ? Math.max(0, Math.min(rawLv, nodeDef.maxLevel))
+              : 0;
           }
         }
       }
@@ -356,6 +369,7 @@ export class MedalGame {
     window.addEventListener('resize', () => this.resizeCanvas());
 
     this.elBtnHome.addEventListener('click', () => {
+      sound.playMenuBack();
       this.enterHomePhase();
     });
 
@@ -363,18 +377,21 @@ export class MedalGame {
       const on = sound.toggle();
       const icon = on ? '🔊' : '🔇';
       this.elBtnSound.textContent = icon;
-      this.elBtnHomeSound.textContent = icon;
+      this.elBtnHomeSound.classList.toggle('is-muted', !on);
+      this.elBtnHomeSound.setAttribute('aria-label', on ? 'サウンドON' : 'サウンドOFF');
     };
 
     this.elBtnSound.addEventListener('click', toggleSound);
     this.elBtnHomeSound.addEventListener('click', toggleSound);
 
-    // ホーム画面ボタン（「プレイ」「強化」）
+    // ホーム画面ボタン（「プレイ」「強化」「刻印」）
     this.elBtnStartPlay.addEventListener('click', () => {
+      sound.playMenuConfirm('play');
       this.startRound();
     });
 
     this.elBtnOpenTree.addEventListener('click', () => {
+      sound.playMenuConfirm('tree');
       this.enterTreePhase();
     });
 
@@ -392,6 +409,9 @@ export class MedalGame {
       }
     });
 
+    this.elRuneSocket1?.addEventListener('click', () => this.unequipRuneAtSlot(0));
+    this.elRuneSocket2?.addEventListener('click', () => this.unequipRuneAtSlot(1));
+
     this.elBtnResetSave.addEventListener('click', () => {
       if (window.confirm('セーブデータを初期化して最初から遊びますか？')) {
         localStorage.removeItem(STORAGE_KEY);
@@ -403,7 +423,10 @@ export class MedalGame {
         this.skillTree = new SkillTreeState();
         this.stats = this.skillTree.computeStats();
         this.selectedNodeId = 'c0';
-        this.equippedRunes = ['comet'];
+        this.equippedRunes = [];
+        this.lastAltairPocketIdx = -1;
+        this.altairChainCount = 0;
+        this.syncEngravingStats();
         this.updateRuneUI();
         this.enterHomePhase();
       }
@@ -411,6 +434,7 @@ export class MedalGame {
 
     // リザルト画面の確認ボタン → ホームに戻る
     this.elBtnResultOk.addEventListener('click', () => {
+      sound.playMenuConfirm('play');
       this.round++;
       this.saveGame();
       this.enterHomePhase();
@@ -421,6 +445,7 @@ export class MedalGame {
       this.buySelectedNode();
     });
     this.elBtnTreeBackHome.addEventListener('click', () => {
+      sound.playMenuBack();
       this.enterHomePhase();
     });
 
@@ -446,6 +471,10 @@ export class MedalGame {
     this.elBtnTreeDebugMax?.addEventListener('click', () => {
       this.skillTree.debugUnlockAll();
       this.stats = this.skillTree.computeStats();
+      this.sanitizeEquippedRunes();
+      this.syncEngravingStats();
+      this.updateHomeRuneButtonState();
+      this.updateRuneUI();
       this.updateTreeUI();
       sound.playUpgrade();
     });
@@ -651,13 +680,15 @@ export class MedalGame {
     this.resetJackpotState();
 
     this.stats = this.skillTree.computeStats();
-    this.stats.runeCometActive = this.equippedRunes.includes('comet');
+    this.sanitizeEquippedRunes();
+    this.syncEngravingStats();
     const { percent } = this.skillTree.getCompletionRatio();
 
-    this.elHomeScore.textContent = `${this.score.toLocaleString()} PT`;
-    this.elHomeBestScore.textContent = `${this.bestRoundScore.toLocaleString()} PT`;
+    this.elHomeScore.innerHTML = `${this.score.toLocaleString()} <span class="hs-unit">PT</span>`;
+    this.elHomeBestScore.innerHTML = `${this.bestRoundScore.toLocaleString()} <span class="hs-unit">PT</span>`;
     this.elHomeCompletion.textContent = `${percent}%`;
     this.updateScoreHUD();
+    this.updateHomeRuneButtonState();
     this.updateRuneUI();
     this.elTimer.textContent = `${this.stats.roundDuration.toFixed(1)}s`;
     this.elTimerBox.classList.remove('warning');
@@ -699,46 +730,220 @@ export class MedalGame {
     this.saveGame();
   }
 
-  // ルーン選択モーダル操作
+  // 刻印解放状態・装着バリデーション共通ヘルパー
+  private isRuneUnlocked(def: RuneDef): boolean {
+    switch (def.tier) {
+      case 'initial':
+        return this.stats.engravingUnlocked;
+      case 'intermediate':
+        return this.stats.engravingMidUnlocked;
+      case 'advanced':
+        return this.stats.engravingAdvUnlocked;
+    }
+  }
+
+  private isRuneActive(id: RuneId): boolean {
+    return this.stats.engravingUnlocked && this.equippedRunes.includes(id);
+  }
+
+  private syncEngravingStats(): void {
+    this.stats.runeCometActive = this.isRuneActive('comet');
+    this.stats.runeCentaurusActive = this.isRuneActive('centaurus');
+  }
+
+  private sanitizeEquippedRunes(): void {
+    const unlockedIds = new Set(
+      RUNE_DEFINITIONS.filter((r) => this.isRuneUnlocked(r)).map((r) => r.id)
+    );
+    const filtered: RuneId[] = [];
+    for (const id of this.equippedRunes) {
+      if (unlockedIds.has(id) && !filtered.includes(id)) {
+        filtered.push(id);
+      }
+    }
+    const maxSlots = this.stats.engravingSlot2Unlocked ? 2 : 1;
+    this.equippedRunes = filtered.slice(0, maxSlots);
+  }
+
+  private updateHomeRuneButtonState(): void {
+    if (!this.elBtnOpenRunes) return;
+    const unlocked = this.stats.engravingUnlocked;
+    this.elBtnOpenRunes.disabled = !unlocked;
+    this.elBtnOpenRunes.classList.toggle('is-locked', !unlocked);
+    this.elBtnOpenRunes.title = unlocked ? '刻印装備' : 'スキルツリー「刻印開放」で解放';
+  }
+
+  // 刻印選択モーダル操作
   private openRuneModal(): void {
     if (!this.elRuneModal) return;
+    if (!this.stats.engravingUnlocked) {
+      sound.playMenuBack();
+      return;
+    }
+    this.sanitizeEquippedRunes();
     this.updateRuneUI();
     this.renderRuneCards();
     this.elRuneModal.classList.remove('hidden');
-    sound.playMedalClink(0.5);
+    sound.playMenuConfirm('rune');
   }
 
   private closeRuneModal(): void {
     if (!this.elRuneModal) return;
     this.elRuneModal.classList.add('hidden');
-    sound.playMedalClink(0.35);
+    sound.playMenuBack();
   }
 
   private equipRune(id: RuneId): void {
-    this.equippedRunes = [id];
-    this.stats.runeCometActive = id === 'comet';
+    const def = RUNE_DEFINITIONS.find((r) => r.id === id);
+    if (!def || !this.isRuneUnlocked(def)) return;
+
+    const existingIdx = this.equippedRunes.indexOf(id);
+    if (existingIdx !== -1) {
+      // 装備中の刻印を再タップした場合は解除
+      this.equippedRunes.splice(existingIdx, 1);
+      sound.playMenuBack();
+    } else {
+      const maxSlots = this.stats.engravingSlot2Unlocked ? 2 : 1;
+      if (this.equippedRunes.length < maxSlots) {
+        this.equippedRunes.push(id);
+      } else if (maxSlots === 1) {
+        this.equippedRunes = [id];
+      } else {
+        this.equippedRunes = [this.equippedRunes[1], id];
+      }
+      sound.playMenuConfirm('rune');
+    }
+
+    this.syncEngravingStats();
     this.saveGame();
     this.updateRuneUI();
     this.renderRuneCards();
-    sound.playUpgrade();
+  }
+
+  private unequipRuneAtSlot(slotIdx: number): void {
+    if (slotIdx < 0 || slotIdx >= this.equippedRunes.length) return;
+    if (slotIdx === 1 && !this.stats.engravingSlot2Unlocked) return;
+    this.equippedRunes.splice(slotIdx, 1);
+    this.syncEngravingStats();
+    this.saveGame();
+    this.updateRuneUI();
+    this.renderRuneCards();
+    sound.playMenuBack();
+  }
+
+  private getZodiacRingMarkup(mode: 'active' | 'lock'): string {
+    if (mode === 'lock') {
+      return `
+        <svg class="zodiac-ring-svg lock-ring" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="60" cy="60" r="55" stroke="#94a3b8" stroke-opacity="0.45" stroke-width="1.1" stroke-dasharray="3 2.5"/>
+          <circle cx="60" cy="60" r="44" stroke="#cbd5e1" stroke-opacity="0.38" stroke-width="0.9"/>
+          <circle cx="60" cy="60" r="41" fill="#040612" fill-opacity="0.95"/>
+          <rect x="33" y="33" width="54" height="54" stroke="#64748b" stroke-opacity="0.35" stroke-width="0.8"/>
+          <rect x="33" y="33" width="54" height="54" stroke="#64748b" stroke-opacity="0.35" stroke-width="0.8" transform="rotate(45 60 60)"/>
+        </svg>
+      `;
+    }
+    const angles12 = Array.from({ length: 12 }, (_, i) => i * 30);
+    const dividers = angles12
+      .map(
+        (a) =>
+          `<line x1="60" y1="3.5" x2="60" y2="20" transform="rotate(${a + 15} 60 60)"/>`
+      )
+      .join('');
+    const glyphs = angles12
+      .map((a) => {
+        if (a % 90 === 0) {
+          return `<path d="M60 7.5 L61.2 10.8 L64.5 12 L61.2 13.2 L60 16.5 L58.8 13.2 L55.5 12 L58.8 10.8 Z" transform="rotate(${a} 60 60)"/>`;
+        }
+        if (a % 90 === 30) {
+          return `<path d="M60 8.5 L62.5 12 L60 15.5 L57.5 12 Z" fill="none" stroke="#fde68a" stroke-width="0.9" transform="rotate(${a} 60 60)"/>`;
+        }
+        return `<circle cx="60" cy="12" r="1.7" transform="rotate(${a} 60 60)"/>`;
+      })
+      .join('');
+
+    return `
+      <svg class="zodiac-ring-svg active-ring" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="56.5" stroke="#fde68a" stroke-opacity="0.82" stroke-width="1.2"/>
+        <circle cx="60" cy="60" r="53.5" stroke="#fef3c7" stroke-opacity="0.38" stroke-width="0.6"/>
+        <circle cx="60" cy="60" r="47.5" stroke="#fde68a" stroke-opacity="0.35" stroke-width="5.5" stroke-dasharray="0.9 4.07"/>
+        <circle cx="60" cy="60" r="40" stroke="#fde68a" stroke-opacity="0.72" stroke-width="1.1"/>
+        <circle cx="60" cy="60" r="37.5" fill="#060b1c" fill-opacity="0.92"/>
+        <g stroke="#fde68a" stroke-opacity="0.52" stroke-width="0.8">${dividers}</g>
+        <g fill="#fef3c7" fill-opacity="0.9">${glyphs}</g>
+      </svg>
+    `;
+  }
+
+  private updateSocketSlotUI(
+    slotEl: Element | null,
+    ringSlotEl: Element | null,
+    iconEl: Element | null,
+    nameEl: Element | null,
+    state: 'equipped' | 'empty' | 'locked',
+    runeDef?: RuneDef
+  ): void {
+    if (slotEl) {
+      slotEl.classList.toggle('equipped', state === 'equipped');
+      slotEl.classList.toggle('empty', state === 'empty');
+      slotEl.classList.toggle('locked', state === 'locked');
+    }
+    const ringMode: 'active' | 'lock' = state === 'locked' ? 'lock' : 'active';
+    if (ringSlotEl && ringSlotEl.getAttribute('data-ring-mode') !== ringMode) {
+      ringSlotEl.setAttribute('data-ring-mode', ringMode);
+      ringSlotEl.innerHTML = this.getZodiacRingMarkup(ringMode);
+    }
+    if (iconEl) {
+      if (state === 'equipped' && runeDef) {
+        iconEl.innerHTML = getRuneSvgIcon(runeDef.id);
+      } else if (state === 'locked') {
+        iconEl.innerHTML = getRuneSvgIcon('lock');
+      } else {
+        iconEl.textContent = '✦';
+      }
+    }
+    if (nameEl) {
+      if (state === 'equipped' && runeDef) {
+        nameEl.textContent = runeDef.name;
+      } else if (state === 'locked') {
+        nameEl.textContent = 'ロック中';
+      } else {
+        nameEl.textContent = '未装備';
+      }
+    }
   }
 
   private updateRuneUI(): void {
-    const activeId = this.equippedRunes[0] || 'comet';
-    const activeDef =
-      RUNE_DEFINITIONS.find((r) => r.id === activeId) || RUNE_DEFINITIONS[0];
+    const slot1Id = this.equippedRunes[0];
+    const slot1Def = slot1Id ? RUNE_DEFINITIONS.find((r) => r.id === slot1Id) : undefined;
+    this.updateSocketSlotUI(
+      this.elRuneSocket1,
+      this.elSocket1RingSlot,
+      this.elActiveRuneIcon,
+      this.elActiveRuneName,
+      slot1Def ? 'equipped' : 'empty',
+      slot1Def
+    );
 
-    if (this.elHomeRuneIcon) {
-      this.elHomeRuneIcon.textContent = activeDef.icon;
-    }
-    if (this.elActiveRuneIcon) {
-      this.elActiveRuneIcon.textContent = activeDef.icon;
-    }
-    if (this.elActiveRuneName) {
-      this.elActiveRuneName.textContent = activeDef.name;
-    }
-    if (this.elActiveRuneDesc) {
-      this.elActiveRuneDesc.textContent = activeDef.description;
+    if (!this.stats.engravingSlot2Unlocked) {
+      this.updateSocketSlotUI(
+        this.elRuneSocket2,
+        this.elSocket2RingSlot,
+        this.elSocket2Icon,
+        this.elSocket2Name,
+        'locked'
+      );
+    } else {
+      const slot2Id = this.equippedRunes[1];
+      const slot2Def = slot2Id ? RUNE_DEFINITIONS.find((r) => r.id === slot2Id) : undefined;
+      this.updateSocketSlotUI(
+        this.elRuneSocket2,
+        this.elSocket2RingSlot,
+        this.elSocket2Icon,
+        this.elSocket2Name,
+        slot2Def ? 'equipped' : 'empty',
+        slot2Def
+      );
     }
   }
 
@@ -746,40 +951,46 @@ export class MedalGame {
     if (!this.elRuneCardList) return;
     this.elRuneCardList.innerHTML = '';
 
-    const currentEquipped = this.equippedRunes[0] || 'comet';
+    const makeFiligreeCorner = (pos: string) => `
+      <svg class="card-filigree-corner ${pos}" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M1 14 V5 Q1 1 5 1 H14" stroke="currentColor" stroke-width="1.25" stroke-opacity="0.88"/>
+        <path d="M3.5 18 C3.5 10, 4 3.5, 18 3.5" stroke="currentColor" stroke-width="0.9" stroke-opacity="0.68"/>
+        <path d="M4 9.5 C7.5 9.5, 9.5 7.5, 9.5 4" stroke="currentColor" stroke-width="0.95" stroke-opacity="0.82"/>
+        <circle cx="6.2" cy="6.2" r="1.25" fill="currentColor" fill-opacity="0.92"/>
+      </svg>
+    `;
 
     for (const r of RUNE_DEFINITIONS) {
-      const isEquipped = currentEquipped === r.id;
-      const isLocked = r.tier === 'intermediate';
+      const unlocked = this.isRuneUnlocked(r);
+      const isEquipped = unlocked && this.equippedRunes.includes(r.id);
 
       const card = document.createElement('div');
-      card.className = `rune-item-card${isEquipped ? ' equipped' : ''}${isLocked ? ' locked' : ''}`;
-
-      const tierBadge =
-        r.tier === 'initial'
-          ? '<span class="rune-card-tag">初期ルーン</span>'
-          : '<span class="rune-card-tag intermediate">🔒 中級ノード</span>';
+      card.className = `rune-item-card${isEquipped ? ' equipped' : ''}${!unlocked ? ' locked' : ''}`;
 
       const statusBadge = isEquipped
-        ? '<span class="rune-status-badge">装備中</span>'
-        : isLocked
-          ? '<span class="rune-status-badge" style="color:#64748b;border-color:#475569;background:rgba(51,65,85,0.4);">未解放</span>'
-          : '<span class="rune-status-badge" style="color:#94a3b8;border-color:rgba(148,163,184,0.4);background:transparent;">タップで装着</span>';
+        ? '<span class="rune-status-badge equipped">装備中</span>'
+        : '';
+
+      const iconHtml = unlocked ? getRuneSvgIcon(r.id) : getRuneSvgIcon('lock');
+      const displayName = unlocked ? r.name : '？？？';
+      const displayDesc = unlocked ? r.description : '？？？';
 
       card.innerHTML = `
-        <div class="rune-card-icon">${r.icon}</div>
+        ${makeFiligreeCorner('tl')}
+        ${makeFiligreeCorner('tr')}
+        ${makeFiligreeCorner('bl')}
+        ${makeFiligreeCorner('br')}
+        <div class="rune-card-icon">${iconHtml}</div>
         <div class="rune-card-info">
           <div class="rune-card-name-row">
-            <span class="rune-card-name">${r.name}</span>
-            ${tierBadge}
+            <span class="rune-card-name">${displayName}</span>
           </div>
-          <div class="rune-card-desc">${r.description}</div>
-          <div class="rune-card-detail">${r.detail}</div>
+          <div class="rune-card-desc">${displayDesc}</div>
         </div>
         ${statusBadge}
       `;
 
-      if (!isLocked) {
+      if (unlocked) {
         card.addEventListener('click', () => {
           this.equipRune(r.id);
         });
@@ -817,7 +1028,7 @@ export class MedalGame {
     const c = this.elHomeHexagramCanvas;
     if (!c) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const size = 68;
+    const size = 62;
     c.width = size * dpr;
     c.height = size * dpr;
     const ctx = c.getContext('2d');
@@ -827,7 +1038,7 @@ export class MedalGame {
 
     const cx = size * 0.5;
     const cy = size * 0.5;
-    const scale = 0.108; // 第4円256px → 約27.6pxに縮小
+    const scale = 0.098; // 第4円256px → 約25pxに縮小
 
     const nodeMap = new Map<string, SkillNodeDef>();
     for (const n of SKILL_NODES) nodeMap.set(n.id, n);
@@ -835,26 +1046,48 @@ export class MedalGame {
     ctx.save();
     ctx.translate(cx, cy);
 
-    // 1. 外周ミルキー水色＆ピンクのリングと第1〜第4円ガイド（未解放でも美しく見えるガイド）
-    const ringGrad = ctx.createLinearGradient(-28, -28, 28, 28);
-    ringGrad.addColorStop(0, 'rgba(125, 211, 252, 0.55)');
-    ringGrad.addColorStop(1, 'rgba(244, 114, 182, 0.55)');
-    ctx.strokeStyle = ringGrad;
-    ctx.lineWidth = 1.4;
+    // 1. 案B-1 天体レーダー十字軸・同心円目盛り＆アイスシアンガイド
+    ctx.strokeStyle = 'rgba(186, 230, 253, 0.14)';
+    ctx.lineWidth = 0.7;
     ctx.beginPath();
-    ctx.arc(0, 0, 29.8, 0, Math.PI * 2);
+    ctx.moveTo(-29, 0);
+    ctx.lineTo(29, 0);
+    ctx.moveTo(0, -29);
+    ctx.lineTo(0, 29);
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(254, 240, 138, 0.22)';
-    ctx.lineWidth = 0.8;
+    // 外周レーダー目盛りティック（24分割）
+    ctx.strokeStyle = 'rgba(186, 230, 253, 0.35)';
+    ctx.lineWidth = 0.75;
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      const r0 = i % 6 === 0 ? 25.5 : 27.2;
+      const r1 = 29.2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+      ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
+      ctx.stroke();
+    }
+
+    const ringGrad = ctx.createLinearGradient(-27, -27, 27, 27);
+    ringGrad.addColorStop(0, 'rgba(224, 247, 255, 0.72)');
+    ringGrad.addColorStop(1, 'rgba(103, 232, 249, 0.45)');
+    ctx.strokeStyle = ringGrad;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.arc(0, 0, 27.2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(125, 211, 252, 0.22)';
+    ctx.lineWidth = 0.75;
     for (const or of TREE_ORBIT_RADII) {
       ctx.beginPath();
       ctx.arc(0, 0, or * scale, 0, Math.PI * 2);
       ctx.stroke();
     }
 
-    ctx.strokeStyle = 'rgba(216, 180, 254, 0.28)';
-    ctx.lineWidth = 1.1;
+    ctx.strokeStyle = 'rgba(186, 230, 253, 0.28)';
+    ctx.lineWidth = 1.0;
     for (const [idA, idB] of HEXAGRAM_LINES) {
       const a = nodeMap.get(idA);
       const b = nodeMap.get(idB);
@@ -864,7 +1097,7 @@ export class MedalGame {
       ctx.stroke();
     }
 
-    // 2. 解放済みノード間の接続ライン（ミルキーシアン＆ピンク）
+    // 2. 解放済みノード間の接続ライン（アイスシアン発光）
     for (const node of SKILL_NODES) {
       if (!this.skillTree.isVisible(node)) continue;
       const lvA = this.skillTree.getLevel(node.id);
@@ -876,10 +1109,10 @@ export class MedalGame {
         if (!target || this.skillTree.getLevel(target.id) <= 0) continue;
 
         ctx.save();
-        ctx.shadowColor = '#7dd3fc';
+        ctx.shadowColor = '#67e8f9';
         ctx.shadowBlur = 4;
-        ctx.strokeStyle = '#7dd3fc';
-        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = '#a5f3fc';
+        ctx.lineWidth = 1.45;
         ctx.beginPath();
         this.traceTreeConnection(ctx, node, target, scale);
         ctx.stroke();
@@ -887,7 +1120,7 @@ export class MedalGame {
       }
     }
 
-    // 3. 点灯した優しい水色＆ホワイトの六芒星ライン
+    // 3. 点灯した六芒星ライン
     for (const [idA, idB] of HEXAGRAM_LINES) {
       const a = nodeMap.get(idA);
       const b = nodeMap.get(idB);
@@ -896,8 +1129,8 @@ export class MedalGame {
         ctx.save();
         ctx.shadowColor = '#38bdf8';
         ctx.shadowBlur = 5;
-        ctx.strokeStyle = '#7dd3fc';
-        ctx.lineWidth = 1.8;
+        ctx.strokeStyle = '#bae6fd';
+        ctx.lineWidth = 1.65;
         ctx.beginPath();
         ctx.moveTo(a.gx * scale, a.gy * scale);
         ctx.lineTo(b.gx * scale, b.gy * scale);
@@ -915,18 +1148,18 @@ export class MedalGame {
 
       const nx = node.gx * scale;
       const ny = node.gy * scale;
-      const r = node.category === 'core' ? 2.8 : lv > 0 ? 2.3 : 1.6;
+      const r = node.category === 'core' ? 2.6 : lv > 0 ? 2.1 : 1.45;
 
       ctx.beginPath();
       ctx.arc(nx, ny, r, 0, Math.PI * 2);
       if (isMax) {
         ctx.fillStyle = '#fde047';
       } else if (lv > 0) {
-        ctx.fillStyle = '#7dd3fc';
+        ctx.fillStyle = '#bae6fd';
       } else if (canBuy) {
         ctx.fillStyle = '#f472b6';
       } else {
-        ctx.fillStyle = 'rgba(203, 213, 225, 0.45)';
+        ctx.fillStyle = 'rgba(186, 230, 253, 0.48)';
       }
       ctx.fill();
     }
@@ -934,13 +1167,88 @@ export class MedalGame {
     ctx.restore();
   }
 
-  // ホーム画面の所持メダル3Dショーケース描画（案E原画準拠：サロン風ジュエリーボックス・ふかふかプラムクッション仕様）
+  // 未解放メダルスロットのコロナ歯車メダリオン＋南京錠アイコン描画（案B-1準拠）
+  private drawLockedMedalMedallion(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    ringColor: string,
+    glowColor: string,
+    glowAlpha: number
+  ): void {
+    ctx.save();
+
+    // 背後のほのかなコロナ光彩
+    const halo = ctx.createRadialGradient(cx, cy, 4, cx, cy, 24);
+    halo.addColorStop(0, glowColor);
+    halo.addColorStop(1, 'rgba(6, 15, 35, 0)');
+    ctx.globalAlpha = glowAlpha;
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // 16歯の天体コロナ外周ノッチ
+    const spikes = 16;
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 1.25;
+    for (let i = 0; i < spikes; i++) {
+      const a = (i / spikes) * Math.PI * 2;
+      const r0 = 15.2;
+      const r1 = i % 2 === 0 ? 18.2 : 16.9;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+      ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      ctx.stroke();
+    }
+
+    // 外輪＆内輪ダブルリング
+    ctx.fillStyle = 'rgba(10, 20, 44, 0.85)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 15.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 1.65;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 15.0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 0.85;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 11.8, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // 中央の端正な南京錠アイコン
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy - 2.2, 3.2, Math.PI, 0);
+    ctx.stroke();
+
+    ctx.fillStyle = ringColor;
+    ctx.beginPath();
+    ctx.roundRect(cx - 4.8, cy - 0.5, 9.6, 7.2, 1.8);
+    ctx.fill();
+
+    ctx.fillStyle = '#08132b';
+    ctx.beginPath();
+    ctx.arc(cx, cy + 3.0, 1.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // ホーム画面の所持メダル3Dショーケース描画（案B-1：星空ガラスディスプレイケース仕様）
   private renderHomeMedalShowcase(): void {
     const c = this.elHomeMedalCanvas;
     if (!c) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = 340;
-    const h = 104; // ユーザー要望により縦幅を拡張
+    const h = 104;
     c.width = w * dpr;
     c.height = h * dpr;
     const ctx = c.getContext('2d');
@@ -948,20 +1256,40 @@ export class MedalGame {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    // ジュエリーボックス内のプラムパープル・高級ベルベットクッション背景
-    const velvetGrad = ctx.createRadialGradient(w * 0.5, 42, 10, w * 0.5, 42, 180);
-    velvetGrad.addColorStop(0, 'rgba(64, 28, 98, 0.55)');
-    velvetGrad.addColorStop(0.55, 'rgba(32, 14, 56, 0.75)');
-    velvetGrad.addColorStop(1, 'rgba(15, 6, 28, 0.95)');
-    ctx.fillStyle = velvetGrad;
+    // 深宇宙ナイトブルー＆星雲背景
+    const spaceGrad = ctx.createRadialGradient(w * 0.5, 44, 12, w * 0.5, 48, 200);
+    spaceGrad.addColorStop(0, 'rgba(24, 52, 102, 0.72)');
+    spaceGrad.addColorStop(0.55, 'rgba(11, 24, 54, 0.88)');
+    spaceGrad.addColorStop(1, 'rgba(5, 11, 28, 0.98)');
+    ctx.fillStyle = spaceGrad;
     ctx.fillRect(0, 0, w, h);
 
-    // クッション中央のふかふか沈み込み曲面ライン（ゴールドの極細光沢糸）
-    ctx.strokeStyle = 'rgba(254, 240, 138, 0.16)';
-    ctx.lineWidth = 1.2;
+    // 星空ショーケースの決定論的スターダスト
+    const stars = [
+      [18, 18, 0.9, 0.55], [64, 24, 0.7, 0.4], [116, 16, 1.0, 0.6],
+      [166, 28, 0.8, 0.45], [218, 18, 0.9, 0.55], [274, 22, 0.7, 0.4],
+      [322, 16, 1.0, 0.5], [82, 74, 0.8, 0.35], [176, 72, 0.9, 0.4],
+      [230, 76, 0.7, 0.35], [292, 70, 0.8, 0.4], [134, 62, 0.6, 0.3],
+    ];
+    for (const [sx, sy, sr, sa] of stars) {
+      ctx.fillStyle = `rgba(224, 242, 254, ${sa})`;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ガラス棚の下辺ハイライト
+    const floorGrad = ctx.createLinearGradient(0, h - 22, 0, h);
+    floorGrad.addColorStop(0, 'rgba(125, 211, 252, 0)');
+    floorGrad.addColorStop(1, 'rgba(186, 230, 253, 0.14)');
+    ctx.fillStyle = floorGrad;
+    ctx.fillRect(0, h - 22, w, 22);
+
+    ctx.strokeStyle = 'rgba(186, 230, 253, 0.26)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(12, 76);
-    ctx.quadraticCurveTo(w * 0.5, 82, w - 12, 76);
+    ctx.moveTo(8, h - 21);
+    ctx.lineTo(w - 8, h - 21);
     ctx.stroke();
 
     // 左端：ノーマルメダルの3Dスタック（最大4段表示、タップで跳ねる）
@@ -971,29 +1299,33 @@ export class MedalGame {
     const nx = 38;
     const normalHop = this.homeCoinHopOffsets[0] || 0;
 
-    // クッションの沈み込み影（楕円シャドウ）
-    ctx.fillStyle = 'rgba(8, 3, 16, 0.75)';
+    ctx.fillStyle = 'rgba(2, 6, 18, 0.75)';
     ctx.beginPath();
-    ctx.ellipse(nx, 64, 20, 8.5, 0, 0, Math.PI * 2);
+    ctx.ellipse(nx, 66, 20, 7.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
     for (let s = 0; s < stackPreview; s++) {
-      // 5枚スタックが時間差で小気味よく波打つウェーブ跳ね
       const stackHop = this.homeNormalStackOffsets[s] || normalHop;
-      this.draw3DTrayCoin(ctx, nx, 54 - s * 5.8 + stackHop, 17, 'normal');
+      this.draw3DTrayCoin(ctx, nx, 56 - s * 5.8 + stackHop, 17, 'normal');
     }
-    ctx.fillStyle = '#fde68a';
-    ctx.font = 'bold 10.5px Consolas, sans-serif';
+    ctx.fillStyle = '#f1f5f9';
+    ctx.font = '700 12px Outfit, "Segoe UI", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(`×${normalCount}`, nx, h - 7);
 
     // 特殊メダル5種のスロット（RUSH, BOUNCE, GOLD, PLASMA, CHRONO）
-    const specialSlots: { type: MedalType; name: string }[] = [
-      { type: 'rush', name: 'RUSH' },
-      { type: 'bounce', name: 'BOUNCE' },
-      { type: 'gold', name: 'GOLD' },
-      { type: 'plasma', name: 'PLASMA' },
-      { type: 'chrono', name: 'CHRONO' },
+    const specialSlots: {
+      type: MedalType;
+      name: string;
+      lockRing: string;
+      lockGlow: string;
+      lockAlpha: number;
+    }[] = [
+      { type: 'rush', name: 'RUSH', lockRing: '#f5d061', lockGlow: 'rgba(250, 204, 21, 0.45)', lockAlpha: 0.75 },
+      { type: 'bounce', name: 'BOUNCE', lockRing: '#7dd3fc', lockGlow: 'rgba(56, 189, 248, 0.48)', lockAlpha: 0.75 },
+      { type: 'gold', name: 'GOLD', lockRing: '#94a3b8', lockGlow: 'rgba(148, 163, 184, 0.25)', lockAlpha: 0.45 },
+      { type: 'plasma', name: 'PLASMA', lockRing: '#7c90aa', lockGlow: 'rgba(124, 144, 170, 0.2)', lockAlpha: 0.38 },
+      { type: 'chrono', name: 'CHRONO', lockRing: '#6c7e98', lockGlow: 'rgba(108, 126, 152, 0.16)', lockAlpha: 0.32 },
     ];
 
     specialSlots.forEach((slot, idx) => {
@@ -1003,12 +1335,11 @@ export class MedalGame {
       const unlocked = this.stats.specialMedals.includes(slot.type);
 
       if (unlocked) {
-        ctx.fillStyle = 'rgba(8, 3, 16, 0.72)';
+        ctx.fillStyle = 'rgba(2, 6, 18, 0.72)';
         ctx.beginPath();
-        ctx.ellipse(sx, 62, 19, 8, 0, 0, Math.PI * 2);
+        ctx.ellipse(sx, 64, 19, 7.5, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // メダル固有のビジュアル変形（バウンスのスカッシュ＆ストレッチ、プラズマの帯電ジッター）
         if (slot.type === 'bounce' && hopY < 0) {
           ctx.save();
           const squash = Math.sin(Math.min(1, -hopY / 22) * Math.PI) * 0.16;
@@ -1028,30 +1359,17 @@ export class MedalGame {
         }
 
         ctx.fillStyle = '#bae6fd';
-        ctx.font = 'bold 9.5px Consolas, sans-serif';
+        ctx.font = '700 9.5px Outfit, Consolas, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(slot.name, sx, h - 7);
       } else {
-        // 未解放シルエット（ベルベットクッションのくぼみスロット）
-        ctx.save();
-        ctx.fillStyle = 'rgba(16, 7, 32, 0.9)';
-        ctx.strokeStyle = 'rgba(186, 230, 253, 0.35)';
-        ctx.lineWidth = 1.3;
-        ctx.beginPath();
-        ctx.ellipse(sx, sy + 6, 17, 9.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        // 未解放スロット：案B-1準拠のコロナ光環メダリオン＆南京錠アイコン
+        this.drawLockedMedalMedallion(ctx, sx, sy + 2, slot.lockRing, slot.lockGlow, slot.lockAlpha);
 
-        ctx.fillStyle = 'rgba(203, 213, 225, 0.55)';
-        ctx.font = 'bold 11px Consolas, sans-serif';
+        ctx.fillStyle = idx <= 1 ? 'rgba(226, 232, 240, 0.82)' : 'rgba(148, 163, 184, 0.65)';
+        ctx.font = '600 8.5px Outfit, Consolas, sans-serif';
         ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('?', sx, sy + 6);
-
-        ctx.fillStyle = 'rgba(148, 163, 184, 0.6)';
-        ctx.font = 'bold 8.5px Consolas, sans-serif';
         ctx.fillText('LOCKED', sx, h - 7);
-        ctx.restore();
       }
     });
 
@@ -1445,6 +1763,10 @@ export class MedalGame {
   private startRound(): void {
     this.phase = 'play';
     this.stats = this.skillTree.computeStats();
+    this.sanitizeEquippedRunes();
+    this.syncEngravingStats();
+    this.lastAltairPocketIdx = -1;
+    this.altairChainCount = 0;
     this.timeRemaining = this.stats.roundDuration;
     this.dropCooldownTimer = 0;
     this.resetJackpotState();
@@ -1695,9 +2017,13 @@ export class MedalGame {
 
     const bounceMult = medal.type === 'bounce' && pin.kind === 'bumper' ? 2.8 : 1.0;
     const feverMult = this.jpFeverTimer > 0 ? 2.0 : 1.0;
-    // ピン衝突得点には接触倍率は掛けず、基礎点×特効×全体倍率×フィーバーで計算
+    const dracoMult =
+      this.isRuneActive('draco') && medal.type === 'normal' && this.timeRemaining <= 10.0
+        ? 1.25
+        : 1.0;
+    // ピン衝突得点には接触倍率は掛けず、基礎点×特効×全体倍率×フィーバー×ドラコで計算
     const raw =
-      pin.baseScore * bounceMult * this.stats.globalScoreMultiplier * feverMult;
+      pin.baseScore * bounceMult * this.stats.globalScoreMultiplier * feverMult * dracoMult;
     const gained = Math.max(1, Math.round(raw));
 
     this.score += gained;
@@ -1707,17 +2033,25 @@ export class MedalGame {
     }
 
     sound.playPinHit(pin.kind === 'bumper');
+    const pinBadge =
+      feverMult > 1 && dracoMult > 1
+        ? ` (x2/🐉)`
+        : feverMult > 1
+          ? ` (x2!)`
+          : dracoMult > 1
+            ? ` (🐉+25%)`
+            : '';
     this.addFloatingText(
       pin.x,
       pin.y - 12,
-      feverMult > 1 ? `+${gained} (x2!)` : `+${gained}`,
+      `+${gained}${pinBadge}`,
       pin.kind === 'bumper' ? '#f472b6' : '#00f2fe',
       pin.kind === 'bumper' ? 1.1 : 0.88
     );
 
-    // 🏹 サジタリウス（中級ノード枠）：通常メダル衝突時 5%で会心 +10 PT
+    // 🏹 サジタリウス（中級刻印）：通常メダル衝突時 5%で会心 +10 PT
     if (
-      this.equippedRunes.includes('sagittarius') &&
+      this.isRuneActive('sagittarius') &&
       medal.type === 'normal' &&
       Math.random() < 0.05
     ) {
@@ -1734,28 +2068,81 @@ export class MedalGame {
     this.roundPocketCount++;
 
     const feverMult = this.jpFeverTimer > 0 ? 2.0 : 1.0;
+    const isNormal = medal.type === 'normal';
+    const dracoMult =
+      this.isRuneActive('draco') && isNormal && this.timeRemaining <= 10.0
+        ? 1.25
+        : 1.0;
+    const pegasusMult =
+      this.isRuneActive('pegasus') && isNormal && medal.pinBounceCount > 0
+        ? 1 + Math.min(10, medal.pinBounceCount) * 0.04
+        : 1.0;
+    const centaurusMult =
+      this.isRuneActive('centaurus') && isNormal && medal.boardElapsedSec <= 2.0
+        ? 1.40
+        : 1.0;
+
+    let altairMult = 1.0;
+    if (this.isRuneActive('altair') && isNormal) {
+      if (this.lastAltairPocketIdx !== -1 && this.lastAltairPocketIdx !== pocket.index) {
+        this.altairChainCount = Math.min(5, this.altairChainCount + 1);
+      } else if (this.lastAltairPocketIdx === pocket.index) {
+        this.altairChainCount = 0;
+      }
+      this.lastAltairPocketIdx = pocket.index;
+      if (this.altairChainCount > 0) {
+        altairMult = 1 + this.altairChainCount * 0.10;
+      }
+    }
+
+    let fortunaMult = 1.0;
+    if (this.isRuneActive('fortuna') && isNormal) {
+      const roll = Math.random();
+      if (roll < 0.15) {
+        fortunaMult = 2.00;
+      } else if (roll < 0.50) {
+        fortunaMult = 1.25;
+      } else {
+        fortunaMult = 1.05;
+      }
+    }
+
+    const totalEngravingMult =
+      dracoMult * pegasusMult * centaurusMult * altairMult * fortunaMult;
     const raw =
       this.stats.basePocketScore *
       pocket.scoreMultiplier *
       medal.chargeMultiplier *
       this.stats.globalScoreMultiplier *
-      feverMult;
+      feverMult *
+      totalEngravingMult;
     const gained = Math.max(1, Math.round(raw));
 
-    // 通常メダルへのルーン効果適用
+    // 通常メダルへの刻印効果適用（固定加算・発動タグ収集）
     let runeBonus = 0;
-    let runeName = '';
-    if (medal.type === 'normal') {
+    const tagParts: string[] = [];
+    if (isNormal) {
       // ☀️ ソーラー：中央ポケット（index === 2）入賞時 +50 PT
-      if (this.equippedRunes.includes('solar') && pocket.index === 2) {
+      if (this.isRuneActive('solar') && pocket.index === 2) {
         runeBonus = 50;
-        runeName = '☀️ソーラー!';
+        tagParts.push('☀️+50');
       }
-      // ✨ トゥインクル：中央以外（index !== 2）ポケット入賞時 +10 PT
-      else if (this.equippedRunes.includes('twinkle') && pocket.index !== 2) {
+      // ✨ トゥインクル：両端ポケット（index === 0 または 4）入賞時 +10 PT
+      else if (
+        this.isRuneActive('twinkle') &&
+        (pocket.index === 0 || pocket.index === 4)
+      ) {
         runeBonus = 10;
-        runeName = '✨トゥインクル!';
+        tagParts.push('✨+10');
       }
+    }
+
+    if (dracoMult > 1) tagParts.push('🐉+25%');
+    if (pegasusMult > 1) tagParts.push(`🦋+${Math.round((pegasusMult - 1) * 100)}%`);
+    if (centaurusMult > 1) tagParts.push('🎯+40%');
+    if (altairMult > 1) tagParts.push(`🔄+${Math.round((altairMult - 1) * 100)}%`);
+    if (fortunaMult > 1) {
+      tagParts.push(`🎲+${Math.round((fortunaMult - 1) * 100)}%${fortunaMult >= 2.0 ? '!' : ''}`);
     }
 
     const totalGained = gained + runeBonus;
@@ -1766,23 +2153,46 @@ export class MedalGame {
     }
 
     const centerX = (pocket.x1 + pocket.x2) * 0.5;
-    const txt = runeName
-      ? `+${totalGained} PT (${runeName})`
+    const tagText = tagParts.join(' ');
+    const txt = tagText
+      ? `+${totalGained} PT (${tagText})`
       : feverMult > 1
         ? `+${gained} PT (x2!)`
         : `+${gained} PT`;
 
-    this.addFloatingText(
-      centerX,
-      POCKET_ENTRY_Y - 8,
-      txt,
-      runeBonus > 0
-        ? '#fde047'
-        : pocket.scoreMultiplier >= 4
-          ? '#00f2fe'
-          : '#fde047',
-      pocket.scoreMultiplier >= 4 || runeBonus > 0 ? 1.25 : 1.05
-    );
+    const isBigFortuna = fortunaMult >= 2.0;
+    const textColor =
+      isBigFortuna
+        ? '#f472b6'
+        : runeBonus > 0 || totalEngravingMult > 1
+          ? '#fde047'
+          : pocket.scoreMultiplier >= 4
+            ? '#00f2fe'
+            : '#fde047';
+    const textScale =
+      isBigFortuna
+        ? 1.35
+        : pocket.scoreMultiplier >= 4 || runeBonus > 0 || totalEngravingMult > 1
+          ? 1.25
+          : 1.05;
+
+    this.addFloatingText(centerX, POCKET_ENTRY_Y - 8, txt, textColor, textScale);
+
+    // ♊ ジェミニ（中級刻印）：通常メダルの中左・中右ポケット入賞時 35%で上空から1枚追加投下
+    if (
+      this.isRuneActive('gemini') &&
+      medal.type === 'normal' &&
+      (pocket.index === 1 || pocket.index === 3) &&
+      Math.random() < 0.35 &&
+      this.physics.medals.length < 60
+    ) {
+      this.roundBonusMedals++;
+      const dropX = 180 + Math.random() * 100;
+      const clone = this.physics.spawnMedal(dropX, 54, 'normal', 'board');
+      clone.contactFlash = 0.8;
+      this.addFloatingText(centerX, POCKET_ENTRY_Y - 28, '♊ +1枚投下!', '#6ee7b7', 1.15);
+      sound.playLaserSplit();
+    }
 
     if (medal.type === 'chrono') {
       this.timeRemaining += 0.4;
@@ -1894,9 +2304,9 @@ export class MedalGame {
   }
 
   private handleJackpotFever(forceFreeze: boolean = false): void {
-    // JPフィーバー（5秒間全得点2倍）解放済みならタイマーセット
+    // JPフィーバー（3秒間全得点2倍）解放済みならタイマーセット
     if (this.stats.jpFeverUnlocked) {
-      this.jpFeverTimer = 5.0;
+      this.jpFeverTimer = 3.0;
     }
 
     // JPロングフリーズ抽選（解放済みかつ1%、またはforceFreeze時）
@@ -4613,6 +5023,8 @@ export class MedalGame {
     this.score -= cost;
     this.skillTree.levels[node.id] = this.skillTree.getLevel(node.id) + 1;
     this.stats = this.skillTree.computeStats();
+    this.sanitizeEquippedRunes();
+    this.syncEngravingStats();
 
     // 100%完全制覇の瞬間を記録
     const { percent } = this.skillTree.getCompletionRatio();

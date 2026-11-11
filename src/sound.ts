@@ -186,20 +186,47 @@ class SoundManager {
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
-    // 全ノード統一：透明感のあるクリスタル・アルペジオ（C5 -> E5 -> G5 -> C6）
-    const freqs = [523.25, 659.25, 783.99, 1046.5];
-    freqs.forEach((f, i) => {
+
+    const triggerTone = (
+      type: OscillatorType,
+      startFreq: number,
+      endFreq: number | null,
+      startTime: number,
+      duration: number,
+      peakGain: number
+    ) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(f, now + i * 0.045);
-      gain.gain.setValueAtTime(0.12, now + i * 0.045);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.045 + 0.16);
+      osc.type = type;
+      osc.frequency.setValueAtTime(startFreq, startTime);
+      if (endFreq !== null) {
+        osc.frequency.exponentialRampToValueAtTime(endFreq, startTime + duration * 0.85);
+      }
+      gain.gain.setValueAtTime(peakGain, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(now + i * 0.045);
-      osc.stop(now + i * 0.045 + 0.17);
+      osc.start(startTime);
+      osc.stop(startTime + duration + 0.015);
+    };
+
+    // 1. 芯のある着火アタック＋星核チャージ上昇スイープ（強化した確かな手応え）
+    triggerTone('sine', 190, 88, now, 0.045, 0.16);
+    triggerTone('triangle', 260, 720, now, 0.068, 0.15);
+
+    // 2. 高音域クリスタル・アセンション（G5 → B5 → D6 → G6 → B6）
+    const freqs = [783.99, 987.77, 1174.66, 1567.98, 1975.53];
+    const step = 0.028;
+    freqs.forEach((f, i) => {
+      const t = now + i * step;
+      const isPeak = i >= 3;
+      const duration = i === freqs.length - 1 ? 0.3 : isPeak ? 0.22 : 0.12;
+      triggerTone(isPeak ? 'sine' : 'triangle', f, null, t, duration, isPeak ? 0.13 : 0.105);
     });
+
+    // 3. 着地ハイトーン・スパークル余韻（D7倍音を加えて華やかなパワーアップ感）
+    const peakTime = now + (freqs.length - 1) * step;
+    triggerTone('sine', 2349.32, null, peakTime, 0.29, 0.055);
   }
 
   public playJackpotLamp(lit: boolean): void {
@@ -585,6 +612,111 @@ class SoundManager {
     gainHarm.connect(ctx.destination);
     oscHarm.start(now + 0.02);
     oscHarm.stop(now + 0.38);
+  }
+
+  /**
+   * ホーム画面主要ボタン（プレイ・強化・刻印）＆決定操作の重厚クリスタル決定SE
+   */
+  public playMenuConfirm(kind: 'play' | 'tree' | 'rune' = 'play'): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // 1. 芯のある重厚タクタイル・アタック（ボタンを物理的に押し込んだ確かな決定感）
+    const bassOsc = ctx.createOscillator();
+    const bassGain = ctx.createGain();
+    bassOsc.type = 'triangle';
+    bassOsc.frequency.setValueAtTime(kind === 'play' ? 165 : 145, now);
+    bassOsc.frequency.exponentialRampToValueAtTime(52, now + 0.11);
+    bassGain.gain.setValueAtTime(kind === 'play' ? 0.34 : 0.28, now);
+    bassGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+    bassOsc.connect(bassGain);
+    bassGain.connect(ctx.destination);
+    bassOsc.start(now);
+    bassOsc.stop(now + 0.13);
+
+    // サブのクリック芯（アタックの輪郭をくっきりさせる）
+    const clickOsc = ctx.createOscillator();
+    const clickGain = ctx.createGain();
+    clickOsc.type = 'sine';
+    clickOsc.frequency.setValueAtTime(420, now);
+    clickOsc.frequency.exponentialRampToValueAtTime(140, now + 0.035);
+    clickGain.gain.setValueAtTime(0.18, now);
+    clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+    clickOsc.connect(clickGain);
+    clickGain.connect(ctx.destination);
+    clickOsc.start(now);
+    clickOsc.stop(now + 0.045);
+
+    // 2. 天体テーマに沿った煌めくクリスタル・コード和音（種別ごとに品格のある響き）
+    let chord: number[];
+    let sustain = 0.28;
+    let step = 0.032;
+    if (kind === 'play') {
+      // プレイ開始：力強く華やかな Cメジャー・スターライト（C5 -> E5 -> G5 -> C6）
+      chord = [523.25, 659.25, 783.99, 1046.5];
+      sustain = 0.34;
+    } else if (kind === 'tree') {
+      // 強化画面：星図が拓かれるような知的で伸びやかな Dadd9（D5 -> A5 -> E6）
+      chord = [587.33, 880.0, 1318.51];
+      sustain = 0.26;
+    } else {
+      // 刻印画面：神秘的かつ荘厳な Eメジャー・クリスタルベル（E5 -> G#5 -> B5 -> E6）
+      chord = [659.25, 830.61, 987.77, 1318.51];
+      sustain = 0.3;
+    }
+
+    chord.forEach((freq, i) => {
+      const t = now + i * step;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = i === 0 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(kind === 'play' ? 0.13 : 0.11, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + sustain);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + sustain + 0.02);
+    });
+  }
+
+  /**
+   * 「閉じる」「ホームへ戻る」用の落ち着いた決定・戻りSE
+   */
+  public playMenuBack(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    // 控えめなタクタイルタッチ
+    const bassOsc = ctx.createOscillator();
+    const bassGain = ctx.createGain();
+    bassOsc.type = 'sine';
+    bassOsc.frequency.setValueAtTime(130, now);
+    bassOsc.frequency.exponentialRampToValueAtTime(65, now + 0.07);
+    bassGain.gain.setValueAtTime(0.18, now);
+    bassGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+    bassOsc.connect(bassGain);
+    bassGain.connect(ctx.destination);
+    bassOsc.start(now);
+    bassOsc.stop(now + 0.09);
+
+    // 柔らかな2音下降クリスタル（G5 -> C5）
+    const notes = [783.99, 523.25];
+    notes.forEach((f, i) => {
+      const t = now + i * 0.04;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, t);
+      gain.gain.setValueAtTime(0.09, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.15);
+    });
   }
 }
 
