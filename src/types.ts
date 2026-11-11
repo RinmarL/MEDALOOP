@@ -30,6 +30,10 @@ export interface MedalEntity {
   splitCooldown?: number; // スプリットライン連続分裂防止クールダウン
   boardElapsedSec: number; // 盤面投入後の経過秒数（ケンタウルス高速入賞判定用）
   pinBounceCount: number; // ピン・バンパー新規衝突回数（ペガサス加算用）
+  stuckSec: number; // 盤面同一箇所での滞留累積秒数（スタック脱出安全弁用）
+  anchorX: number; // 滞留判定アンカーX座標
+  anchorY: number; // 滞留判定アンカーY座標
+  unstickCount: number; // 同一メダルでの滞留脱出発動回数
   trail: TrailPoint[];
 }
 

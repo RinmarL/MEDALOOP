@@ -580,10 +580,16 @@
 
         <!-- ③ スキルツリー画面オーバーレイ（案1：セレスティアル・アストロロジー天球図） -->
         <div id="tree-overlay" class="tree-overlay hidden">
-          <!-- 上部アーチ型セレスティアル・ヘッダーバー（解放率表示に集約） -->
+          <!-- 上部アーチ型セレスティアル・ヘッダーバー（ブランドロゴ＆所持ポイント＋強化解放率） -->
           <div class="tree-top-bar celestial-tree-header">
             <div class="tree-header-main">
-              <span class="tree-brand-logo">MEDALOOP</span>
+              <div class="tree-header-top-row">
+                <span class="tree-brand-logo">MEDALOOP</span>
+                <div class="tree-wallet-pill">
+                  <span class="twp-label">所持ポイント</span>
+                  <strong id="tree-score" class="twp-val">0 <span class="twp-unit">PT</span></strong>
+                </div>
+              </div>
               <div class="tree-progress-row">
                 <span class="tree-progress-label">強化解放率: <strong id="tree-completion">0%</strong></span>
                 <div class="progress-bar-bg celestial-progress-bg">
@@ -613,10 +619,6 @@
               <div class="node-header-title-wrap">
                 <span id="node-title" class="node-title">ノードを選択</span>
                 <span id="node-level" class="node-level">Lv.0/1</span>
-              </div>
-              <div class="node-detail-wallet">
-                <span class="ndw-label">所持</span>
-                <strong id="tree-score" class="ndw-val">0 PT</strong>
               </div>
             </div>
             <p id="node-desc" class="node-desc">ノードをタップすると詳細が表示されます。</p>

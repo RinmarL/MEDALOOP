@@ -5042,7 +5042,7 @@ export class MedalGame {
 
   private updateTreeUI(): void {
     this.updateScoreHUD();
-    this.elTreeScore.textContent = `${this.score.toLocaleString()} PT`;
+    this.elTreeScore.innerHTML = `${this.score.toLocaleString()} <span class="twp-unit">PT</span>`;
     const { percent } = this.skillTree.getCompletionRatio();
     this.elTreeCompletion.textContent = `${percent}%`;
     this.elTreeProgressFill.style.width = `${percent}%`;

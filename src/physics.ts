@@ -187,12 +187,12 @@ export class PhysicsWorld {
 
     // 3. 釘（ピン）配置：洗練された抜け感と完璧な千鳥ダイヤモンド対称配置（案1: チャッカーガード型・計24本）
     const pinCoords = [
-      // 上部1列目 (5本：レールから流れてきたメダルを優しく中央へ振り分け)
-      { x: 130, y: 175 },
-      { x: 180, y: 175 },
-      { x: 230, y: 175 },
-      { x: 280, y: 175 },
-      { x: 330, y: 175 },
+      // 上部1列目 (5本：±6pxの千鳥チルトで水平50px間隔による3枚ピラミッドアーチを防止)
+      { x: 130, y: 169 },
+      { x: 180, y: 181 },
+      { x: 230, y: 169 },
+      { x: 280, y: 181 },
+      { x: 330, y: 169 },
 
       // 上部外側振り分け (2本：バンパー上部アプローチを開放し外側を中央へ誘導)
       { x: 84, y: 216 },
@@ -407,6 +407,10 @@ export class PhysicsWorld {
       contactCooldown: 0,
       boardElapsedSec: 0,
       pinBounceCount: 0,
+      stuckSec: 0,
+      anchorX: clampedX,
+      anchorY: y,
+      unstickCount: 0,
       trail: [{ x: clampedX, y }],
     };
     this.medals.push(medal);
@@ -529,9 +533,37 @@ export class PhysicsWorld {
         m.vy *= scale;
       }
 
-      // 3) 位置更新
+      // 3) 位置更新＆盤面滞在・滞留脱出安全弁
       m.x += m.vx * DT;
       m.y += m.vy * DT;
+
+      if (m.zone === 'board') {
+        const movedFromAnchor = Math.hypot(m.x - m.anchorX, m.y - m.anchorY);
+        if (movedFromAnchor > 16 || m.y > m.anchorY + 12) {
+          m.anchorX = m.x;
+          m.anchorY = m.y;
+          m.stuckSec = 0;
+        } else if (m.y < POCKET_TRIGGER_Y - 35) {
+          m.stuckSec += DT;
+          const threshold = 0.65 + (m.id % 5) * 0.06;
+          if (m.stuckSec >= threshold) {
+            const dir =
+              m.x < 105
+                ? 1
+                : m.x > BOARD_WIDTH - 105
+                  ? -1
+                  : (m.id + m.unstickCount) % 2 === 0
+                    ? 1
+                    : -1;
+            m.vx = dir * (165 + (m.id % 3) * 30);
+            m.vy = -195;
+            m.stuckSec = 0.30;
+            m.anchorX = m.x;
+            m.anchorY = m.y;
+            m.unstickCount++;
+          }
+        }
+      }
 
       if (m.zone === 'board' && recordTrail) {
         m.trail.push({ x: m.x, y: m.y });
@@ -729,16 +761,24 @@ export class PhysicsWorld {
     b.x += nx * push;
     b.y += ny * push;
 
-    // 上下に重なり合ったメダル同士の横滑り落とし（ピラミッド・アーチスタック防止）
-    if (Math.abs(ny) > 0.4 && Math.abs(nx) < 0.35) {
-      const slide = (nx >= 0 ? 1 : -1) * 60;
-      if (a.y < b.y) {
-        a.vx -= slide * DT * 60;
-        b.vx += slide * DT * 60;
-      } else {
-        b.vx += slide * DT * 60;
-        a.vx -= slide * DT * 60;
-      }
+    // 上下に重なり・三角形組石（|nx|<0.72）となったメダル同士のアーチ崩し＆水平膠着時の高さ分離
+    if (Math.abs(ny) > 0.35 && Math.abs(nx) < 0.72) {
+      const upper = a.y <= b.y ? a : b;
+      const lower = a.y <= b.y ? b : a;
+      const dux = lower.x - upper.x;
+      const dir =
+        Math.abs(dux) > 0.5 ? (dux > 0 ? -1 : 1) : (upper.id + lower.id) % 2 === 0 ? 1 : -1;
+      upper.vx += dir * 75 * DT * 60;
+      lower.vx -= dir * 40 * DT * 60;
+    } else if (
+      Math.abs(ny) <= 0.35 &&
+      Math.hypot(a.vx, a.vy) < 45 &&
+      Math.hypot(b.vx, b.vy) < 45
+    ) {
+      const higher = a.y <= b.y ? a : b;
+      const lower = a.y <= b.y ? b : a;
+      higher.vy -= 40 * DT * 60;
+      lower.vy += 20 * DT * 60;
     }
 
     const tx = -ny;
@@ -872,11 +912,10 @@ export class PhysicsWorld {
         m.x += nx * overlap;
         m.y += ny * overlap;
 
-        // ピン頭頂部（ny < -0.1）での静止・スタック防止（常時外向きへの転がり滑落力）
-        if (ny < -0.1 && pin.kind === 'normal') {
+        // ピン頭頂付近での真上静止防止（斜め接触時の2本ピン間アーチ締め付け＆強制シフトを防止）
+        if (ny < -0.78 && pin.kind === 'normal' && Math.hypot(m.vx, m.vy) < 120) {
           const rollSign = Math.abs(nx) > 0.02 ? Math.sign(nx) : (m.id % 2 === 0 ? 1 : -1);
-          m.vx += rollSign * 180 * DT * 60;
-          m.x += rollSign * 0.35;
+          m.vx += rollSign * 160 * DT * 60;
         }
 
         const tx = -ny;
@@ -998,6 +1037,10 @@ export class PhysicsWorld {
             splitCooldown: 0.55,
             boardElapsedSec: 0,
             pinBounceCount: 0,
+            stuckSec: 0,
+            anchorX: m.x + 8,
+            anchorY: m.y,
+            unstickCount: 0,
             trail: [{ x: m.x + 8, y: m.y }],
           });
 
@@ -1037,6 +1080,9 @@ export class PhysicsWorld {
           m.vx = cat.side === 'left' ? 18 : -18; // 盤面中央寄りへの緩やかな横初速
           m.contactFlash = 1.0;
           m.passedPocket = false;
+          m.stuckSec = 0;
+          m.anchorX = warpX;
+          m.anchorY = warpY;
           // ※ m.chargeMultiplier（接触帯電倍率やオーブ倍率）および m.type（特殊効果）は100%完全維持！
           m.trail = [{ x: m.x, y: m.y }];
 
