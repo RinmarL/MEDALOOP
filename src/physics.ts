@@ -76,6 +76,61 @@ const LUCKY_RING_SPOTS = [
   { x: 230, y: 415 }, // 下中央
 ];
 
+/** 点 (px, py) と線分 (x1, y1)-(x2, y2) の最短距離 */
+function distPointToSegment(
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / l2)) : 0;
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+/** 2線分 A-B の交差判定 */
+function segmentsIntersect(
+  ax1: number,
+  ay1: number,
+  ax2: number,
+  ay2: number,
+  bx1: number,
+  by1: number,
+  bx2: number,
+  by2: number
+): boolean {
+  const cross = (ux: number, uy: number, vx: number, vy: number) => ux * vy - uy * vx;
+  const d1 = cross(bx2 - bx1, by2 - by1, ax1 - bx1, ay1 - by1);
+  const d2 = cross(bx2 - bx1, by2 - by1, ax2 - bx1, ay2 - by1);
+  const d3 = cross(ax2 - ax1, ay2 - ay1, bx1 - ax1, by1 - ay1);
+  const d4 = cross(ax2 - ax1, ay2 - ay1, bx2 - ax1, by2 - ay1);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+/** 2線分 A-B の最短距離 */
+function distSegmentToSegment(
+  ax1: number,
+  ay1: number,
+  ax2: number,
+  ay2: number,
+  bx1: number,
+  by1: number,
+  bx2: number,
+  by2: number
+): number {
+  if (segmentsIntersect(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2)) return 0;
+  return Math.min(
+    distPointToSegment(ax1, ay1, bx1, by1, bx2, by2),
+    distPointToSegment(ax2, ay2, bx1, by1, bx2, by2),
+    distPointToSegment(bx1, by1, ax1, ay1, ax2, ay2),
+    distPointToSegment(bx2, by2, ax1, ay1, ax2, ay2)
+  );
+}
+
 export class PhysicsWorld {
   public medals: MedalEntity[] = [];
   public pins: PinEntity[] = [];
@@ -101,18 +156,81 @@ export class PhysicsWorld {
   private stepCount: number = 0;
   private lastStats?: ComputedStats;
 
-  public getRandomLaserLine(): { x1: number; y1: number; x2: number; y2: number } {
-    // 盤面の中段エリア（y: 210〜410、x: 105〜355）に長さ約52pxのランダム線分（+10px延長）
-    const cx = 105 + Math.random() * (BOARD_WIDTH - 210);
-    const cy = 210 + Math.random() * 200;
-    const ang = (Math.random() - 0.5) * 0.48; // 水平±14度
-    const halfLen = 26; // 全長 52px (以前の42pxから10px延長)
-    return {
-      x1: Math.round(cx - Math.cos(ang) * halfLen),
-      y1: Math.round(cy - Math.sin(ang) * halfLen),
-      x2: Math.round(cx + Math.cos(ang) * halfLen),
-      y2: Math.round(cy + Math.sin(ang) * halfLen),
-    };
+  /**
+   * バンパー・ピン・カタパルト・他ギミックと重ならないランダムなスプリットライン座標を抽選する。
+   */
+  public getRandomLaserLine(excludeLaserId?: number): { x1: number; y1: number; x2: number; y2: number } {
+    const halfLen = 26; // 線分全長 52px
+    const podExtend = 5; // 両端エミッターポッドの軸方向張り出し分
+
+    let bestHardValid: { line: { x1: number; y1: number; x2: number; y2: number }; score: number } | null = null;
+    let bestFallback: { line: { x1: number; y1: number; x2: number; y2: number }; score: number } | null = null;
+
+    for (let attempt = 0; attempt < 120; attempt++) {
+      // 盤面中段エリア（x: 95〜365, y: 200〜425）から候補を生成
+      const cx = 95 + Math.random() * (BOARD_WIDTH - 190);
+      const cy = 200 + Math.random() * 225;
+      const ang = (Math.random() - 0.5) * 0.48; // 水平±14度
+      const cosA = Math.cos(ang);
+      const sinA = Math.sin(ang);
+
+      const line = {
+        x1: Math.round(cx - cosA * halfLen),
+        y1: Math.round(cy - sinA * halfLen),
+        x2: Math.round(cx + cosA * halfLen),
+        y2: Math.round(cy + sinA * halfLen),
+      };
+
+      // 両端エミッター外縁まで含めた実描画ベース線分でクリアランスを判定
+      const ldx = line.x2 - line.x1;
+      const ldy = line.y2 - line.y1;
+      const llen = Math.hypot(ldx, ldy) || 1;
+      const ux = ldx / llen;
+      const uy = ldy / llen;
+      const ex1 = line.x1 - ux * podExtend;
+      const ey1 = line.y1 - uy * podExtend;
+      const ex2 = line.x2 + ux * podExtend;
+      const ey2 = line.y2 + uy * podExtend;
+
+      let minHardSlack = Infinity;
+      for (const pin of this.pins) {
+        // バンパーは外周ネオンリング(r+4)+ポッド幅+余白、通常ピンは本体+ポッド幅+余白を確保
+        const pad = pin.kind === 'bumper' ? 18 : 14;
+        const slack = distPointToSegment(pin.x, pin.y, ex1, ey1, ex2, ey2) - (pin.radius + pad);
+        if (slack < minHardSlack) minHardSlack = slack;
+      }
+      for (const cat of this.catapults) {
+        const slack = distPointToSegment(cat.x, cat.y, ex1, ey1, ex2, ey2) - (cat.radius + 16);
+        if (slack < minHardSlack) minHardSlack = slack;
+      }
+
+      let minSoftSlack = Infinity;
+      for (const other of this.splitLasers) {
+        if (other.id === excludeLaserId || !other.active) continue;
+        const slack =
+          distSegmentToSegment(ex1, ey1, ex2, ey2, other.x1, other.y1, other.x2, other.y2) - 34;
+        if (slack < minSoftSlack) minSoftSlack = slack;
+      }
+      if (this.luckyRing.active) {
+        const slack =
+          distPointToSegment(this.luckyRing.x, this.luckyRing.y, ex1, ey1, ex2, ey2) -
+          (this.luckyRing.radius + 14);
+        if (slack < minSoftSlack) minSoftSlack = slack;
+      }
+
+      // 障害物（ピン・バンパー・カタパルト）と他ギミックのすべてと干渉しなければ即採用
+      if (minHardSlack >= 0 && minSoftSlack >= 0) {
+        return line;
+      }
+      if (minHardSlack >= 0 && (!bestHardValid || minSoftSlack > bestHardValid.score)) {
+        bestHardValid = { line, score: minSoftSlack };
+      }
+      if (!bestFallback || minHardSlack > bestFallback.score) {
+        bestFallback = { line, score: minHardSlack };
+      }
+    }
+
+    return (bestHardValid ?? bestFallback)!.line;
   }
 
   public setupBoard(stats: ComputedStats): void {
@@ -259,9 +377,13 @@ export class PhysicsWorld {
       );
     }
 
+    // ラッキーリングを先に配置し、直後のスプリットライン生成時にも重複回避できるようにする
+    this.lastStats = stats;
+    this.relocateLuckyRing(stats);
+
     // 4. スプリットライン（長さ約52px、最大3回通過または5秒で消滅→3秒クールダウン、通過でメダル分裂）
     if (stats.splitLaserCount >= 1) {
-      const line1 = this.getRandomLaserLine();
+      const line1 = this.getRandomLaserLine(1);
       this.splitLasers.push({
         id: 1,
         ...line1,
@@ -274,7 +396,7 @@ export class PhysicsWorld {
       });
     }
     if (stats.splitLaserCount >= 2) {
-      const line2 = this.getRandomLaserLine();
+      const line2 = this.getRandomLaserLine(2);
       this.splitLasers.push({
         id: 2,
         ...line2,
@@ -288,7 +410,6 @@ export class PhysicsWorld {
     }
 
     // 下部ポケット（5レーン）：初期倍率は 1倍 と 2倍 のみ、起点ノード解放で中央が 4倍、スロット倍率強化で全体乗算
-    this.lastStats = stats;
     const totalInnerW = WALL_RIGHT - WALL_LEFT;
     const slotCount = 5;
     const slotW = totalInnerW / slotCount;
@@ -313,8 +434,6 @@ export class PhysicsWorld {
         lit: false,
       });
     }
-
-    this.relocateLuckyRing(stats);
   }
 
   public resetPocketsLit(): void {
@@ -331,12 +450,18 @@ export class PhysicsWorld {
       return;
     }
 
-    // 前回と異なるスポットを抽選（別の場所で出現）
-    let spotIdx = Math.floor(Math.random() * LUCKY_RING_SPOTS.length);
-    if (spotIdx === this.luckyRing.lastSpotIndex && LUCKY_RING_SPOTS.length > 1) {
-      spotIdx =
-        (spotIdx + 1 + Math.floor(Math.random() * (LUCKY_RING_SPOTS.length - 1))) % LUCKY_RING_SPOTS.length;
-    }
+    // 前回と異なるスポット候補のうち、稼働中のスプリットラインと重ならない位置を優先抽選
+    const otherSpots = LUCKY_RING_SPOTS.map((_, i) => i).filter((i) => i !== this.luckyRing.lastSpotIndex);
+    const nonLastSpots = otherSpots.length > 0 ? otherSpots : [0];
+    const minRingPad = this.luckyRing.radius + 14;
+    const clearSpots = nonLastSpots.filter((idx) => {
+      const s = LUCKY_RING_SPOTS[idx];
+      return this.splitLasers.every(
+        (laser) => !laser.active || distPointToSegment(s.x, s.y, laser.x1, laser.y1, laser.x2, laser.y2) >= minRingPad
+      );
+    });
+    const pool = clearSpots.length > 0 ? clearSpots : nonLastSpots;
+    const spotIdx = pool[Math.floor(Math.random() * pool.length)];
     this.luckyRing.lastSpotIndex = spotIdx;
     const spot = LUCKY_RING_SPOTS[spotIdx];
     this.luckyRing.x = spot.x;
@@ -458,7 +583,7 @@ export class PhysicsWorld {
         laser.active = false;
         laser.timer = 0;
       } else if (!laser.active && laser.timer >= laser.cooldownDuration) {
-        const newLine = this.getRandomLaserLine();
+        const newLine = this.getRandomLaserLine(laser.id);
         laser.x1 = newLine.x1;
         laser.y1 = newLine.y1;
         laser.x2 = newLine.x2;

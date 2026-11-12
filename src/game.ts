@@ -147,7 +147,8 @@ export class MedalGame {
   private selectedNodeId: string = 'c0';
   private treeCamX: number = 0;
   private treeCamY: number = 0;
-  private treeZoom: number = 1.0;
+  private readonly defaultTreeZoom: number = 0.76;
+  private treeZoom: number = this.defaultTreeZoom;
   private readonly minTreeZoom: number = 0.55;
   private readonly maxTreeZoom: number = 2.4;
   private isDraggingTree: boolean = false;
@@ -457,7 +458,7 @@ export class MedalGame {
       this.treeZoom = Math.max(this.minTreeZoom, this.treeZoom * 0.8);
     });
     this.elBtnTreeZoomReset?.addEventListener('click', () => {
-      this.treeZoom = 1.0;
+      this.treeZoom = this.defaultTreeZoom;
       this.treeCamX = 0;
       this.treeCamY = 0;
     });
@@ -1851,7 +1852,7 @@ export class MedalGame {
     this.isPointerDownOnInsertSlot = false;
     this.treeCamX = 0;
     this.treeCamY = 0;
-    this.treeZoom = 1.0;
+    this.treeZoom = this.defaultTreeZoom;
     this.activeTreePointers.clear();
     this.isDraggingTree = false;
     this.isPinchingTree = false;
