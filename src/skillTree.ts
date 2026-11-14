@@ -219,7 +219,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'jp_freeze',
     name: 'JPロングフリーズ',
-    description: 'JACKPOT突入時1%で暗転フリーズ！100枚一気放出プレミアム演出',
+    description: 'JACKPOT突入時2%で暗転フリーズ！100枚一気放出プレミアム演出',
     ...polar(ORBIT_R4, -110),
     maxLevel: 1,
     baseCost: 45000,
@@ -269,7 +269,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'star_1',
     name: 'ワープホール',
-    description: '下部左右にワープホール出現、入ったメダルを最上部へワープさせてループ',
+    description: '下部ワープホールから上空ゲートへ高速クロス射出（通過で倍率+0.5＆25%複製）',
     ...polar(ORBIT_R3, -38.6),
     maxLevel: 1,
     baseCost: 6200,
@@ -368,12 +368,12 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'star_2',
     name: 'ポケット倍率 I',
-    description: '全ポケットの得点倍率を基礎値の2倍へ強化（中央 4→8）',
+    description: '全ポケットの得点倍率を基礎値の2倍へ強化（x1/x2/x4 → x2/x4/x8）',
     ...polar(ORBIT_R2, 54),
     maxLevel: 1,
     baseCost: 1200,
     costScale: 1,
-    neighbors: ['r1_4', 'm2_1', 'm2_4'],
+    neighbors: ['r1_4', 'm2_1', 'r2_4'],
     category: 'stat',
     icon: '🎰',
   },
@@ -392,7 +392,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'star_0',
     name: 'ポケット倍率 II',
-    description: '全ポケットの得点倍率を基礎値の3倍へ強化（中央 8→12）',
+    description: '全ポケットの得点倍率を基礎値の3倍へ強化（x2/x4/x8 → x3/x6/x12）',
     ...polar(ORBIT_R4, 30),
     maxLevel: 1,
     baseCost: 68000,
@@ -402,28 +402,28 @@ export const SKILL_NODES: SkillNodeDef[] = [
     icon: '🎰',
   },
   {
-    id: 'm2_4',
-    name: '制限時間延長 IV',
-    description: '制限時間 +1秒',
+    id: 'r2_4',
+    name: '制限時間延長 III',
+    description: '制限時間 +1秒（最大Lv4）',
     ...polar(ORBIT_R3, 64.3),
-    maxLevel: 3,
+    maxLevel: 4,
     baseCost: 3200,
     costScale: 1.55,
-    neighbors: ['star_2', 'r2_4'],
+    neighbors: ['star_2', 'prism_target'],
     category: 'stat',
     icon: '⏱',
   },
   {
-    id: 'r2_4',
-    name: '制限時間延長 III',
-    description: '制限時間 +1秒',
+    id: 'prism_target',
+    name: 'プリズム',
+    description: '盤面に破壊可能な結晶が出現（3回当てると破壊、ボーナスPT＆追加メダル2枚放出）',
     ...polar(ORBIT_R4, 50),
-    maxLevel: 3,
-    baseCost: 7500,
-    costScale: 1.55,
-    neighbors: ['m2_4'],
-    category: 'stat',
-    icon: '⏱',
+    maxLevel: 1,
+    baseCost: 4200,
+    costScale: 1,
+    neighbors: ['r2_4'],
+    category: 'milestone',
+    icon: '💠',
   },
 
   // === 左下セクター（第2円: 126°, 162°） ===
@@ -484,7 +484,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     maxLevel: 3,
     baseCost: 1600,
     costScale: 1.7,
-    neighbors: ['m2_3', 'outer_1'],
+    neighbors: ['m2_3'],
     category: 'stat',
     icon: '🔋',
   },
@@ -511,18 +511,6 @@ export const SKILL_NODES: SkillNodeDef[] = [
     neighbors: ['reload_spd_1'],
     category: 'stat',
     icon: '⚡',
-  },
-  {
-    id: 'outer_1',
-    name: '制限時間延長 V',
-    description: '制限時間 +1秒',
-    ...polar(ORBIT_R4, 150),
-    maxLevel: 3,
-    baseCost: 7500,
-    costScale: 1.55,
-    neighbors: ['reload_count'],
-    category: 'stat',
-    icon: '⏱',
   },
 
   // === 左上セクター（第2円: -162°回収ライン ＆ 刻印ツリー 2分岐ライン） ===
@@ -713,9 +701,8 @@ export class SkillTreeState {
     let dropCooldown = 1.0 * (1 - dropReduction);
     dropCooldown = Math.max(0.20, dropCooldown);
 
-    // ベースの制限時間：15.0秒 ＋ 「+1秒（最大3回）」× 5マス（r1_3, r1_1, r2_4, m2_4, outer_1）
-    const timeBonusLevels =
-      lv('r1_3') + lv('r1_1') + lv('r2_4') + lv('m2_4') + lv('outer_1');
+    // ベースの制限時間：15.0秒 ＋ 延長 I(+3) / II(+3) / III(+4) で最大 25.0秒
+    const timeBonusLevels = lv('r1_3') + lv('r1_1') + lv('r2_4');
     const roundDuration = 15.0 + timeBonusLevels * 1.0;
 
     // 下皿回収速度・枚数・範囲
@@ -861,6 +848,7 @@ export class SkillTreeState {
       jpNormalMedalRate,
       jpFeverUnlocked: lv('jp_fever') > 0,
       jpFreezeUnlocked: lv('jp_freeze') > 0,
+      prismTargetUnlocked: lv('prism_target') > 0,
       engravingUnlocked,
       engravingMidUnlocked,
       engravingSlot2Unlocked,
@@ -869,4 +857,140 @@ export class SkillTreeState {
       runeCentaurusActive: false,
     };
   }
+}
+
+// ============================================================
+// 強化画面の効果プレビュー（現在値 → 次Lv の数値差）
+// 実際の computeStats() を「Lv+1」状態と比較して生成するため、
+// ノード定義の変更や他ノードの取得状況に自動追従する。
+// ============================================================
+export interface EffectPreviewRow {
+  label: string;
+  from: string;
+  to: string;
+}
+
+function fmtNum(n: number, digits: number = 2): string {
+  return String(parseFloat(n.toFixed(digits)));
+}
+
+export function getNodeEffectPreview(state: SkillTreeState, node: SkillNodeDef): EffectPreviewRow[] {
+  const lv = state.getLevel(node.id);
+  const isMax = lv >= node.maxLevel;
+
+  const alt = new SkillTreeState();
+  Object.assign(alt.levels, state.levels);
+  alt.levels[node.id] = isMax ? Math.max(0, lv - 1) : lv + 1;
+
+  const a = isMax ? alt.computeStats() : state.computeStats();
+  const b = isMax ? state.computeStats() : alt.computeStats();
+  const rows: EffectPreviewRow[] = [];
+  const push = (label: string, from: string, to: string) => rows.push({ label, from, to });
+
+  if (a.roundDuration !== b.roundDuration) {
+    push('制限時間', `${fmtNum(a.roundDuration, 1)}秒`, `${fmtNum(b.roundDuration, 1)}秒`);
+  }
+  if (a.dropCooldown !== b.dropCooldown) {
+    push('投下クールタイム', `${fmtNum(a.dropCooldown)}秒`, `${fmtNum(b.dropCooldown)}秒`);
+  }
+  if (a.basePinScore !== b.basePinScore) {
+    push('バンパー基礎点', `${a.basePinScore}点`, `${b.basePinScore}点`);
+  } else if (node.id === 'outer_5') {
+    push('バンパー基礎点', 'x1', 'x2');
+  }
+  if (a.basePocketScore !== b.basePocketScore) {
+    push('メダル基礎点', `${a.basePocketScore}点`, `${b.basePocketScore}点`);
+  }
+  if (a.centerSlot4xUnlocked !== b.centerSlot4xUnlocked) {
+    push('中央ポケット倍率', `x${1 * a.slotMultiplier}`, `x${4 * b.slotMultiplier}`);
+  }
+  if (a.slotMultiplier !== b.slotMultiplier) {
+    const fmtAllPockets = (s: ComputedStats) => {
+      const c = (s.centerSlot4xUnlocked ? 4 : 1) * s.slotMultiplier;
+      return `x${1 * s.slotMultiplier} / x${2 * s.slotMultiplier} / x${c}`;
+    };
+    push('全ポケット倍率 (端/中/中央)', fmtAllPockets(a), fmtAllPockets(b));
+  }
+  if (a.pickupInterval !== b.pickupInterval) {
+    push('回収速度', `x${fmtNum(0.13 / a.pickupInterval)}`, `x${fmtNum(0.13 / b.pickupInterval)}`);
+  }
+  if (a.reloadInterval !== b.reloadInterval) {
+    push('装填速度', `x${fmtNum(0.16 / a.reloadInterval)}`, `x${fmtNum(0.16 / b.reloadInterval)}`);
+  }
+  if (a.pickupBatchSize !== b.pickupBatchSize) {
+    push('1回の回収枚数', `${a.pickupBatchSize}枚`, `${b.pickupBatchSize}枚`);
+  }
+  if (a.reloadBatchSize !== b.reloadBatchSize) {
+    push('同時装填枚数', `${a.reloadBatchSize}枚`, `${b.reloadBatchSize}枚`);
+  }
+  if (a.pickupRadius !== b.pickupRadius) {
+    push('回収範囲', `${a.pickupRadius}px`, `${b.pickupRadius}px`);
+  }
+  if (a.contactMaxMultiplier !== b.contactMaxMultiplier) {
+    push('接触倍率の上限', `x${fmtNum(a.contactMaxMultiplier, 1)}`, `x${fmtNum(b.contactMaxMultiplier, 1)}`);
+  }
+  if (a.pinChargeGain !== b.pinChargeGain) {
+    push('ピン接触の上昇量', `+${fmtNum(a.pinChargeGain, 1)}`, `+${fmtNum(b.pinChargeGain, 1)}`);
+  }
+  if (a.medalChargeGain !== b.medalChargeGain) {
+    push('メダル接触の上昇量', `+${fmtNum(a.medalChargeGain, 1)}`, `+${fmtNum(b.medalChargeGain, 1)}`);
+  }
+  if (a.jpShotsCount !== b.jpShotsCount) {
+    push('JP射出枚数', `${a.jpShotsCount}枚`, `${b.jpShotsCount}枚`);
+  }
+  if (a.jpNormalMedalRate !== b.jpNormalMedalRate) {
+    push(
+      'JP特殊メダル出現率',
+      `${Math.round((1 - a.jpNormalMedalRate) * 100)}%`,
+      `${Math.round((1 - b.jpNormalMedalRate) * 100)}%`
+    );
+  }
+  if (a.specialMedals.length !== b.specialMedals.length) {
+    push('初期メダル枚数', `${a.specialMedals.length}枚`, `${b.specialMedals.length}枚`);
+  }
+  if (a.boostRingLevel !== b.boostRingLevel) {
+    push(
+      'ブーストオーブ倍率',
+      a.boostRingLevel > 0 ? `x${a.boostRingLevel + 1}` : 'なし',
+      `x${b.boostRingLevel + 1}`
+    );
+  }
+  if (a.cloneRingLevel !== b.cloneRingLevel) {
+    const cloneCount = (lvl: number) => (lvl >= 3 ? 2 : lvl >= 1 ? 1 : 0);
+    const cloneBonus = (lvl: number) => (lvl >= 2 ? 1.5 : 1);
+    if (cloneCount(a.cloneRingLevel) !== cloneCount(b.cloneRingLevel)) {
+      push(
+        '分裂で増える枚数',
+        cloneCount(a.cloneRingLevel) > 0 ? `+${cloneCount(a.cloneRingLevel)}枚` : 'なし',
+        `+${cloneCount(b.cloneRingLevel)}枚`
+      );
+    }
+    if (cloneBonus(a.cloneRingLevel) !== cloneBonus(b.cloneRingLevel)) {
+      push('分裂メダルの得点', `x${cloneBonus(a.cloneRingLevel)}`, `x${cloneBonus(b.cloneRingLevel)}`);
+    }
+  }
+  if (a.splitLaserCount !== b.splitLaserCount) {
+    push('スプリットライン', `${a.splitLaserCount}本`, `${b.splitLaserCount}本`);
+  }
+
+  const unlockFlags: Array<[keyof ComputedStats, string, string]> = [
+    ['holdDropUnlocked', 'm2_5', '長押し連続投下'],
+    ['swipePickupUnlocked', 'm2_0', '連続回収（なぞり）'],
+    ['holdReloadUnlocked', 'm2_3', '長押し連続装填'],
+    ['catapultUnlocked', 'star_1', 'ワープホール'],
+    ['prismTargetUnlocked', 'prism_target', 'プリズム'],
+    ['jpFeverUnlocked', 'jp_fever', 'JPフィーバー'],
+    ['jpFreezeUnlocked', 'jp_freeze', 'JPロングフリーズ'],
+    ['engravingUnlocked', 'engraving_unlock', '刻印'],
+    ['engravingMidUnlocked', 'engraving_mid', '中級刻印'],
+    ['engravingSlot2Unlocked', 'engraving_slot2', '刻印スロット2枠目'],
+    ['engravingAdvUnlocked', 'engraving_adv', '上級刻印'],
+  ];
+  for (const [key, nid, label] of unlockFlags) {
+    if ((!a[key] && b[key]) || node.id === nid) {
+      push(label, '未解放', '解放');
+    }
+  }
+
+  return rows;
 }

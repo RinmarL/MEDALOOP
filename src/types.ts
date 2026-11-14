@@ -28,6 +28,9 @@ export interface MedalEntity {
   pinHitCooldown: number;
   contactCooldown?: number; // メダル同士接触倍率加算クールダウン
   splitCooldown?: number; // スプリットライン連続分裂防止クールダウン
+  warpCooldown?: number; // ワープ直後の連続再突入防止クールダウン
+  warpTrailTimer?: number; // ワープ射出直後のネオントレイル強調タイマー
+  prismCooldown?: number; // プリズム連続ヒット防止クールダウン
   boardElapsedSec: number; // 盤面投入後の経過秒数（ケンタウルス高速入賞判定用）
   pinBounceCount: number; // ピン・バンパー新規衝突回数（ペガサス加算用）
   stuckSec: number; // 盤面同一箇所での滞留累積秒数（スタック脱出安全弁用）
@@ -82,8 +85,23 @@ export interface CyberCatapult {
   side: 'left' | 'right';
   x: number;
   y: number;
+  exitX: number;
+  exitY: number;
   radius: number;
   launchAnim: number; // 発射噴射アニメ (1.0 -> 0)
+}
+
+export interface PrismTarget {
+  x: number;
+  y: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  active: boolean;
+  respawnTimer: number;
+  rotAngle: number;
+  hitAnim: number;
+  lastSpotIndex: number;
 }
 
 export interface PocketSlot {
@@ -160,10 +178,12 @@ export interface LightningBolt {
 export interface WarpEffect {
   x: number;
   y: number;
+  tx?: number; // arc終点X（ワープ先ゲートX）
+  ty?: number; // arc終点Y（ワープ先ゲートY）
   progress: number; // 0 -> 1
   maxR: number;
   color: string;
-  kind: 'implosion' | 'explosion'; // implosion: 吸い込み消滅, explosion: 出現拡散
+  kind: 'implosion' | 'explosion' | 'arc'; // implosion: 吸い込み消滅, explosion: 出現拡散, arc: 入口→出口ワープビーム
 }
 
 export interface SkillNodeDef {
@@ -475,7 +495,7 @@ export function getRuneSvgIcon(id: RuneId | 'lock'): string {
 
 export interface ComputedStats {
   centerSlot4xUnlocked: boolean; // 起点ノード効果：中央スロットを4倍にする
-  roundDuration: number; // 初期 20秒
+  roundDuration: number; // 初期 15秒（最大 25秒）
   dropCooldown: number; // 初期 1.0秒
   holdDropUnlocked: boolean; // 長押し投下
   swipePickupUnlocked: boolean; // 下皿スワイプ/長押し回収
@@ -509,7 +529,8 @@ export interface ComputedStats {
   jpShotsCount: number; // JP射出枚数（初期10枚、jp_count_1:15枚、jp_count_2:20枚、jp_count_3:25枚）
   jpNormalMedalRate: number; // JP時の通常メダル確率（初期0.80、強化で0.70→0.60→0.50）
   jpFeverUnlocked: boolean; // JPフィーバー（3秒間全メダル得点2倍）
-  jpFreezeUnlocked: boolean; // JPロングフリーズ（1%で4.4秒演出＆100枚一斉投下）
+  jpFreezeUnlocked: boolean; // JPロングフリーズ（2%で4.4秒演出＆100枚一斉投下）
+  prismTargetUnlocked: boolean; // プリズム・ターゲット（破壊型結晶ギミック）有効化
   engravingUnlocked: boolean; // 刻印開放（ホーム「刻印」解放＆初期3刻印有効化）
   engravingMidUnlocked: boolean; // 中級刻印開放（中級刻印3種解禁）
   engravingSlot2Unlocked: boolean; // スロット2枠目開放（最大2種同時装備）

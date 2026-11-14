@@ -1000,15 +1000,19 @@ html, body {
 }
 
 /* リザルト画面専用スタイル */
+.result-card {
+  padding: 16px 18px 16px;
+}
+
 .result-main-score {
   background: rgba(6, 9, 17, 0.92);
   border: 1.5px solid rgba(253, 224, 71, 0.55);
   border-radius: 12px;
-  padding: 12px;
-  margin-bottom: 14px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   box-shadow: inset 0 0 16px rgba(253, 224, 71, 0.12);
 }
 
@@ -1019,11 +1023,13 @@ html, body {
 }
 
 .rms-value {
-  font-size: 32px;
+  font-size: 30px;
   font-weight: 900;
-  font-family: 'Courier New', Consolas, monospace;
+  font-family: 'Outfit', 'Courier New', Consolas, monospace;
   color: var(--neon-gold);
   text-shadow: 0 0 14px rgba(253, 224, 71, 0.75);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
 }
 
 .rms-sub {
@@ -1032,24 +1038,116 @@ html, body {
   font-weight: 700;
 }
 
+.result-badges-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.res-record-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  color: #cbd5e1;
+}
+
+/* スコア内訳バー */
+.res-breakdown-box {
+  background: rgba(9, 13, 24, 0.88);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 10px;
+  padding: 7px 12px 8px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.res-bd-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.res-bd-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.res-bd-item strong {
+  font-family: 'Outfit', Consolas, monospace;
+  font-size: 12px;
+  color: #ffffff;
+}
+
+.bd-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.bd-dot.pocket {
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+
+.bd-dot.pin {
+  background: #f472b6;
+  box-shadow: 0 0 6px #f472b6;
+}
+
+.res-bd-bar-track {
+  width: 100%;
+  height: 7px;
+  background: #060913;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.res-bd-bar-fill.pocket {
+  height: 100%;
+  background: linear-gradient(90deg, #0284c7, #38bdf8);
+  transition: width 0.35s ease;
+}
+
+.res-bd-bar-fill.pin {
+  height: 100%;
+  background: linear-gradient(90deg, #ec4899, #f472b6);
+  transition: width 0.35s ease;
+}
+
 .result-stats-list {
   background: rgba(9, 13, 24, 0.8);
   border: 1px solid #283550;
   border-radius: 10px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 18px;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
 .res-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12.5px;
+  font-size: 12px;
   border-bottom: 1px dashed rgba(148, 163, 184, 0.15);
-  padding-bottom: 5px;
+  padding-bottom: 4px;
 }
 
 .res-row:last-child {
@@ -1064,7 +1162,7 @@ html, body {
 .res-val {
   font-weight: 900;
   font-family: 'Courier New', Consolas, monospace;
-  font-size: 14px;
+  font-size: 13px;
   color: #ffffff;
 }
 
@@ -1074,6 +1172,20 @@ html, body {
 
 .highlight-cyan {
   color: #67e8f9;
+}
+
+.result-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.result-action-btn .crystal-btn-inner {
+  padding: 9px 8px;
+}
+
+.result-action-btn .btn-main-text {
+  font-size: 17px;
 }
 
 /* ③ スキルツリーオーバーレイ */
@@ -1311,7 +1423,197 @@ html, body {
   transition: width 0.25s ease;
 }
 
-/* 天体星図盤（コズミックタブレット）・下部詳細パネル */
+.tree-overlay.has-goals .tree-debug-bar,
+.tree-overlay.has-goals .tree-zoom-controls {
+  top: 124px;
+}
+
+.tree-overlay.has-goals .tree-milestone-banner {
+  top: 122px;
+}
+
+/* 目標ピン一覧バー（ヘッダー内・最大3つ・3等分グリッドで横はみ出し防止） */
+.tree-goal-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  width: 100%;
+  padding-top: 4px;
+  border-top: 1px solid rgba(125, 211, 252, 0.22);
+}
+
+.tree-goal-bar.hidden {
+  display: none;
+}
+
+.tree-goal-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 3px 5px;
+  border-radius: 10px;
+  background: rgba(15, 23, 48, 0.92);
+  border: 1px solid rgba(253, 224, 71, 0.55);
+  color: #fef08a;
+  font-family: 'Zen Maru Gothic', sans-serif;
+  font-size: 9.5px;
+  font-weight: 800;
+  cursor: pointer;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  transition: transform 0.1s, border-color 0.15s;
+}
+
+.tree-goal-chip:active {
+  transform: scale(0.95);
+}
+
+.tree-goal-chip.is-ready {
+  background: linear-gradient(90deg, rgba(131, 24, 67, 0.9) 0%, rgba(157, 23, 77, 0.92) 100%);
+  border-color: #f472b6;
+  color: #ffffff;
+  box-shadow: 0 0 8px rgba(244, 114, 182, 0.55);
+}
+
+.tree-goal-chip .tgc-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.tree-goal-chip .tgc-rem {
+  color: #bae6fd;
+  font-family: 'Outfit', Consolas, sans-serif;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.tree-goal-chip.is-ready .tgc-rem {
+  color: #fde047;
+}
+
+/* キーノード解放マイルストーン演出トースト */
+.tree-milestone-banner {
+  position: absolute;
+  top: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(14, 26, 64, 0.96) 0%, rgba(30, 27, 75, 0.98) 50%, rgba(14, 26, 64, 0.96) 100%);
+  border: 1.6px solid #fde047;
+  color: #fef08a;
+  font-family: 'Zen Maru Gothic', sans-serif;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.85),
+    0 0 18px rgba(253, 224, 71, 0.55);
+  pointer-events: none;
+  animation: milestone-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.tree-milestone-banner.hidden {
+  display: none;
+}
+
+@keyframes milestone-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+/* 詳細ドロワー内：目標ピン登録ボタン ＆ 数値プレビューチップ */
+.btn-pin-goal {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1.2px solid rgba(148, 163, 184, 0.55);
+  background: rgba(15, 23, 42, 0.88);
+  color: #cbd5e1;
+  font-family: 'Zen Maru Gothic', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-pin-goal.is-pinned {
+  background: linear-gradient(180deg, rgba(120, 53, 15, 0.92) 0%, rgba(69, 26, 3, 0.96) 100%);
+  border-color: #fde047;
+  color: #fef08a;
+  box-shadow: 0 0 10px rgba(253, 224, 71, 0.45);
+}
+
+.btn-pin-goal.hidden {
+  display: none;
+}
+
+.node-effect-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.node-effect-preview:empty {
+  display: none;
+}
+
+.ep-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: rgba(8, 15, 35, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  font-size: 11px;
+  font-weight: 800;
+  color: #cbd5e1;
+}
+
+.ep-chip .ep-label {
+  color: #94a3b8;
+}
+
+.ep-chip .ep-before {
+  color: #e2e8f0;
+  font-family: 'Outfit', Consolas, sans-serif;
+}
+
+.ep-chip .ep-arrow {
+  color: #38bdf8;
+  font-weight: 900;
+}
+
+.ep-chip .ep-after {
+  color: #fde047;
+  font-family: 'Outfit', Consolas, sans-serif;
+  font-weight: 900;
+  text-shadow: 0 0 8px rgba(253, 224, 71, 0.45);
+}
+
+.ep-chip.is-max .ep-after {
+  color: #7dd3fc;
+  text-shadow: 0 0 8px rgba(125, 211, 252, 0.45);
+}
 .celestial-detail-drawer {
   background:
     radial-gradient(ellipse at 50% 0%, rgba(56, 189, 248, 0.16) 0%, transparent 65%),
@@ -1380,11 +1682,11 @@ html, body {
 }
 
 .celestial-detail-drawer .node-desc {
-  font-size: 12.5px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.4;
   color: #e2e8f0;
-  margin-bottom: 10px;
-  min-height: 36px;
+  margin-bottom: 6px;
+  min-height: 20px;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
@@ -1396,7 +1698,7 @@ html, body {
 /* 取得・強化アクションボタン（Active時） */
 .btn-buy-cabochon {
   flex: 1.35;
-  padding: 12px 10px;
+  padding: 11px 10px;
   border-radius: 999px;
   border: 2px solid #ffffff;
   background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 45%, #ec4899 90%, #db2777 100%);
@@ -1404,8 +1706,11 @@ html, body {
   font-family: 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', sans-serif;
   font-size: 15.5px;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
   box-shadow:
     0 5px 16px rgba(2, 4, 12, 0.85),
     0 0 18px rgba(14, 165, 233, 0.55),

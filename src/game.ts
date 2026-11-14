@@ -18,6 +18,7 @@ import {
   WALL_RIGHT,
 } from './physics';
 import {
+   getNodeEffectPreview,
   HEXAGRAM_LINES,
   ORBIT_R4,
   SKILL_NODES,
@@ -117,12 +118,30 @@ export class MedalGame {
 
   // ラウンドリザルト集計用
   private roundGainedScore: number = 0;
+  private roundPocketScore: number = 0;
+  private roundPinScore: number = 0;
   private roundInsertedCount: number = 0;
   private roundDroppedCount: number = 0;
   private roundPocketCount: number = 0;
   private roundPinHits: number = 0;
   private roundMaxSingleHit: number = 0;
   private roundBonusMedals: number = 0;
+
+  // スキルツリー目標ピン（最大3つ）＆購入演出管理
+  private goalNodeIds: string[] = [];
+  private milestoneBannerTimer: number = 0;
+  private treeNodeBounceTimers = new Map<string, number>();
+  private treePurchaseEffects: Array<{
+    kind: 'ring' | 'chain';
+    x: number;
+    y: number;
+    tx?: number;
+    ty?: number;
+    t: number;
+    maxT: number;
+    isMax: boolean;
+    isMilestone: boolean;
+  }> = [];
 
   // 物理＆スキルツリー
   private physics = new PhysicsWorld();
@@ -167,6 +186,18 @@ export class MedalGame {
   private slotInsertAnims: SlotInsertAnim[] = [];
   private warpEffects: WarpEffect[] = [];
   private lightningBolts: LightningBolt[] = [];
+  private prismShards: Array<{
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    size: number;
+    rot: number;
+    vRot: number;
+    life: number;
+    maxLife: number;
+    color: string;
+  }> = [];
 
   // JACKPOTフィーバー演出管理
   private jackpotBannerTimer: number = 0;
@@ -248,12 +279,19 @@ export class MedalGame {
   private elResultOverlay = document.getElementById('result-overlay')!;
   private elResGainedScore = document.getElementById('res-gained-score')!;
   private elResTotalScore = document.getElementById('res-total-score')!;
+  private elResRecordBadge = document.getElementById('res-record-badge');
+  private elResPocketPt = document.getElementById('res-pocket-pt');
+  private elResPinPt = document.getElementById('res-pin-pt');
+  private elResBdBarPocket = document.getElementById('res-bd-bar-pocket') as HTMLElement | null;
+  private elResBdBarPin = document.getElementById('res-bd-bar-pin') as HTMLElement | null;
   private elResInsertedCount = document.getElementById('res-inserted-count')!;
   private elResDroppedCount = document.getElementById('res-dropped-count')!;
   private elResPocketCount = document.getElementById('res-pocket-count')!;
   private elResPinHits = document.getElementById('res-pin-hits')!;
   private elResMaxHit = document.getElementById('res-max-hit')!;
   private elResBonusMedals = document.getElementById('res-bonus-medals')!;
+  private elBtnResultTree = document.getElementById('btn-result-tree') as HTMLButtonElement | null;
+  private elResultTreeBadge = document.getElementById('result-tree-badge');
   private elBtnResultOk = document.getElementById('btn-result-ok')!;
 
   // スキルツリー画面DOM
@@ -261,9 +299,13 @@ export class MedalGame {
   private elTreeCompletion = document.getElementById('tree-completion')!;
   private elTreeProgressFill = document.getElementById('tree-progress-fill')!;
   private elTreeScore = document.getElementById('tree-score')!;
+  private elTreeGoalBar = document.getElementById('tree-goal-bar');
+  private elTreeMilestoneBanner = document.getElementById('tree-milestone-banner');
   private elNodeTitle = document.getElementById('node-title')!;
   private elNodeLevel = document.getElementById('node-level')!;
+  private elBtnPinNode = document.getElementById('btn-pin-node') as HTMLButtonElement | null;
   private elNodeDesc = document.getElementById('node-desc')!;
+  private elNodeEffectPreview = document.getElementById('node-effect-preview');
   private elBtnBuyNode = document.getElementById('btn-buy-node') as HTMLButtonElement;
   private elBtnTreeBackHome = document.getElementById('btn-tree-back-home') as HTMLButtonElement;
   private elBtnTreeZoomIn = document.getElementById('btn-tree-zoom-in') as HTMLButtonElement | null;
@@ -342,6 +384,10 @@ export class MedalGame {
           }
         }
       }
+      if (Array.isArray(data.goalNodeIds)) {
+        this.goalNodeIds = data.goalNodeIds.filter((id: unknown) => typeof id === 'string');
+        this.sanitizeGoalPins();
+      }
     } catch {
       // ignore
     }
@@ -359,6 +405,7 @@ export class MedalGame {
           clearRecord: this.clearRecord,
           levels: this.skillTree.levels,
           equippedRunes: this.equippedRunes,
+          goalNodeIds: this.goalNodeIds.slice(0, 3),
         })
       );
     } catch {
@@ -425,6 +472,7 @@ export class MedalGame {
         this.stats = this.skillTree.computeStats();
         this.selectedNodeId = 'c0';
         this.equippedRunes = [];
+        this.goalNodeIds = [];
         this.lastAltairPocketIdx = -1;
         this.altairChainCount = 0;
         this.syncEngravingStats();
@@ -433,18 +481,30 @@ export class MedalGame {
       }
     });
 
-    // リザルト画面の確認ボタン → ホームに戻る
+    // リザルト画面ボタン：「強化へ」と「もう一度」
+    this.elBtnResultTree?.addEventListener('click', () => {
+      sound.playMenuConfirm('tree');
+      this.round++;
+      this.saveGame();
+      this.enterTreePhase();
+    });
+
     this.elBtnResultOk.addEventListener('click', () => {
       sound.playMenuConfirm('play');
       this.round++;
       this.saveGame();
-      this.enterHomePhase();
+      this.startRound();
     });
 
-    // スキルツリー画面ボタン（解放ボタン押下時のみ解放、ホームに戻るボタンでホームへ）
+    // スキルツリー画面ボタン（単押し取得・強化、目標ピン登録、ホームへ戻る）
     this.elBtnBuyNode.addEventListener('click', () => {
       this.buySelectedNode();
     });
+
+    this.elBtnPinNode?.addEventListener('click', () => {
+      this.toggleGoalPin(this.selectedNodeId);
+    });
+
     this.elBtnTreeBackHome.addEventListener('click', () => {
       sound.playMenuBack();
       this.enterHomePhase();
@@ -1774,6 +1834,8 @@ export class MedalGame {
 
     // リザルト統計リセット
     this.roundGainedScore = 0;
+    this.roundPocketScore = 0;
+    this.roundPinScore = 0;
     this.roundInsertedCount = 0;
     this.roundDroppedCount = 0;
     this.roundPocketCount = 0;
@@ -1789,6 +1851,7 @@ export class MedalGame {
     this.slotInsertAnims = [];
     this.warpEffects = [];
     this.lightningBolts = [];
+    this.prismShards = [];
 
     this.physics.medals = [];
     this.physics.setupBoard(this.stats);
@@ -1819,10 +1882,32 @@ export class MedalGame {
     this.isPointerDownOnInsertSlot = false;
     this.resetJackpotState();
 
+    // 1. それまでの自己ベスト表示＆内部ベスト記録更新（通知・アニメーション・直近比較なし）
+    const prevBest = this.bestRoundScore;
     if (this.roundGainedScore > this.bestRoundScore) {
       this.bestRoundScore = this.roundGainedScore;
     }
+    if (this.elResRecordBadge) {
+      this.elResRecordBadge.textContent = `それまでの自己ベスト: ${prevBest.toLocaleString()} PT`;
+    }
 
+    // 2. スコア内訳バー（スロット vs バンパー）
+    if (this.elResPocketPt) {
+      this.elResPocketPt.textContent = `+${this.roundPocketScore.toLocaleString()} PT`;
+    }
+    if (this.elResPinPt) {
+      this.elResPinPt.textContent = `+${this.roundPinScore.toLocaleString()} PT`;
+    }
+    const totalBD = Math.max(1, this.roundPocketScore + this.roundPinScore);
+    const pocketPct =
+      this.roundPocketScore + this.roundPinScore === 0
+        ? 100
+        : Math.round((this.roundPocketScore / totalBD) * 100);
+    const pinPct = 100 - pocketPct;
+    if (this.elResBdBarPocket) this.elResBdBarPocket.style.width = `${pocketPct}%`;
+    if (this.elResBdBarPin) this.elResBdBarPin.style.width = `${pinPct}%`;
+
+    // 3. 獲得ポイント＆統計行をアニメーションなしで確定表示
     this.elTimerBox.classList.remove('warning');
     this.elTimer.textContent = '0.0s';
 
@@ -1834,6 +1919,14 @@ export class MedalGame {
     this.elResPinHits.textContent = `${this.roundPinHits} 回`;
     this.elResMaxHit.textContent = `+${this.roundMaxSingleHit.toLocaleString()} PT`;
     this.elResBonusMedals.textContent = `+${this.roundBonusMedals} 枚`;
+
+    // 5. 強化可能ノード数の判定＆「強化へ」ボタンバッジ表示
+    this.sanitizeGoalPins();
+    const affordableNodes = SKILL_NODES.filter(
+      (n) => this.skillTree.isVisible(n) && this.skillTree.canBuy(n, this.score)
+    );
+    const affordableCount = affordableNodes.length;
+    this.elResultTreeBadge?.classList.toggle('hidden', affordableCount === 0);
 
     this.elCabinetHeader.classList.remove('hidden');
     this.elHomeOverlay.classList.add('hidden');
@@ -2029,6 +2122,7 @@ export class MedalGame {
 
     this.score += gained;
     this.roundGainedScore += gained;
+    this.roundPinScore += gained;
     if (gained > this.roundMaxSingleHit) {
       this.roundMaxSingleHit = gained;
     }
@@ -2059,6 +2153,7 @@ export class MedalGame {
       const crit = 10;
       this.score += crit;
       this.roundGainedScore += crit;
+      this.roundPinScore += crit;
       this.addFloatingText(pin.x, pin.y - 28, `+${crit} 🏹会心!`, '#f472b6', 1.2);
     }
 
@@ -2149,6 +2244,7 @@ export class MedalGame {
     const totalGained = gained + runeBonus;
     this.score += totalGained;
     this.roundGainedScore += totalGained;
+    this.roundPocketScore += totalGained;
     if (totalGained > this.roundMaxSingleHit) {
       this.roundMaxSingleHit = totalGained;
     }
@@ -2310,9 +2406,9 @@ export class MedalGame {
       this.jpFeverTimer = 3.0;
     }
 
-    // JPロングフリーズ抽選（解放済みかつ1%、またはforceFreeze時）
+    // JPロングフリーズ抽選（解放済みかつ2%、またはforceFreeze時）
     const triggerFreeze =
-      (this.stats.jpFreezeUnlocked && Math.random() < 0.01) || forceFreeze;
+      (this.stats.jpFreezeUnlocked && Math.random() < 0.02) || forceFreeze;
     if (triggerFreeze) {
       this.startJackpotFreeze();
       return;
@@ -2532,6 +2628,7 @@ export class MedalGame {
       this.renderPlayPhase();
     } else if (this.phase === 'tree') {
       this.totalPlayTimeSec += dtSec;
+      this.updateTreePhase(dtSec);
       this.renderTreePhase();
     } else {
       if (this.phase === 'home') {
@@ -2542,6 +2639,35 @@ export class MedalGame {
     }
 
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  private updateTreePhase(dtSec: number): void {
+    // 1. 購入エフェクト更新
+    for (let i = this.treePurchaseEffects.length - 1; i >= 0; i--) {
+      const eff = this.treePurchaseEffects[i];
+      eff.t += dtSec;
+      if (eff.t >= eff.maxT) {
+        this.treePurchaseEffects.splice(i, 1);
+      }
+    }
+
+    // 2. ノード購入バウンス更新
+    for (const [nid, rem] of this.treeNodeBounceTimers.entries()) {
+      const next = rem - dtSec;
+      if (next <= 0) {
+        this.treeNodeBounceTimers.delete(nid);
+      } else {
+        this.treeNodeBounceTimers.set(nid, next);
+      }
+    }
+
+    // 3. マイルストーンバナータイマー更新
+    if (this.milestoneBannerTimer > 0) {
+      this.milestoneBannerTimer -= dtSec;
+      if (this.milestoneBannerTimer <= 0) {
+        this.elTreeMilestoneBanner?.classList.add('hidden');
+      }
+    }
   }
 
   private updatePlayPhase(dtSec: number): void {
@@ -2613,33 +2739,124 @@ export class MedalGame {
         sound.playLaserSplit();
         this.addFloatingText(x, y - 10, 'SPLIT! x2', '#38bdf8', 1.0);
       },
-      onCatapultLaunch: (m, cat, originX, originY) => {
+      onCatapultLaunch: (m, cat, originX, originY, cloned) => {
         sound.playCatapultLaunch();
-        // 吸い込み消滅エフェクト（カタパルト位置）
+        const sx = originX ?? cat.x;
+        const sy = originY ?? cat.y;
+        // 吸い込み消滅エフェクト（入口ポータル）
         this.warpEffects.push({
-          x: originX ?? cat.x,
-          y: originY ?? cat.y,
+          x: sx,
+          y: sy,
           progress: 0,
-          maxR: 28,
-          color: '#38bdf8',
+          maxR: 32,
+          color: '#a855f7',
           kind: 'implosion',
         });
-        // 出現拡散エフェクト（最上部ワープ先位置）
+        // 入口→出口へのワープ光線アーク
         this.warpEffects.push({
-          x: m.x,
-          y: m.y,
+          x: cat.x,
+          y: cat.y,
+          tx: cat.exitX,
+          ty: cat.exitY,
           progress: 0,
-          maxR: 34,
+          maxR: 1,
+          color: '#00f2fe',
+          kind: 'arc',
+        });
+        // 出現拡散エフェクト（上空出口ゲート）
+        this.warpEffects.push({
+          x: cat.exitX,
+          y: cat.exitY,
+          progress: 0,
+          maxR: 38,
           color: '#00f2fe',
           kind: 'explosion',
         });
 
-        // 倍率情報・特殊タイプ維持を視覚的に伝えるフローティングテキスト
-        const multLabel = m.chargeMultiplier > 1.0 ? `x${m.chargeMultiplier.toFixed(1)} ` : '';
-        this.addFloatingText(m.x, m.y - 12, `WARP! ${multLabel}`, '#00f2fe', 1.15);
-        this.addFloatingText(cat.x, cat.y - 16, 'WARPING!', '#38bdf8', 0.95);
+        if (cloned) {
+          this.roundBonusMedals++;
+        }
+        const multLabel = `x${m.chargeMultiplier.toFixed(1)}`;
+        this.addFloatingText(
+          cat.exitX,
+          cat.exitY + 18,
+          cloned ? `WARP +0.5 & 複製! (${multLabel})` : `WARP +0.5! (${multLabel})`,
+          cloned ? '#f472b6' : '#00f2fe',
+          cloned ? 1.22 : 1.12
+        );
+        this.addFloatingText(cat.x, cat.y - 20, 'HYPER WARP!', '#c084fc', 0.95);
       },
       onLuckyRingPass: (m, ring) => this.handleLuckyRingPass(m, ring),
+      onPrismHit: (_medal, prism) => {
+        sound.playPrismHit(prism.hp);
+        // ヒット時の結晶欠片スパーク
+        const hitColor = prism.hp <= 1 ? '#f472b6' : prism.hp === 2 ? '#fde047' : '#38bdf8';
+        for (let k = 0; k < 4; k++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 70 + Math.random() * 80;
+          this.prismShards.push({
+            x: prism.x,
+            y: prism.y,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd - 30,
+            size: 3 + Math.random() * 2.5,
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 14,
+            life: 0.35,
+            maxLife: 0.35,
+            color: hitColor,
+          });
+        }
+        this.addFloatingText(prism.x, prism.y - 16, `CRACK! ${prism.hp}/${prism.maxHp}`, hitColor, 0.98);
+      },
+      onPrismBreak: (_medal, prism, spawnedCount) => {
+        sound.playPrismBreak();
+        const feverMult = this.jpFeverTimer > 0 ? 2.0 : 1.0;
+        const breakPt = Math.max(
+          15,
+          Math.round(15 * this.stats.basePocketScore * this.stats.slotMultiplier * feverMult)
+        );
+        this.score += breakPt;
+        this.roundGainedScore += breakPt;
+        this.roundPocketScore += breakPt;
+        if (breakPt > this.roundMaxSingleHit) {
+          this.roundMaxSingleHit = breakPt;
+        }
+        this.roundBonusMedals += spawnedCount;
+        this.updateScoreHUD();
+
+        this.warpEffects.push({
+          x: prism.x,
+          y: prism.y,
+          progress: 0,
+          maxR: 46,
+          color: '#f472b6',
+          kind: 'explosion',
+        });
+        const colors = ['#38bdf8', '#fde047', '#f472b6', '#ffffff'];
+        for (let k = 0; k < 14; k++) {
+          const ang = (k / 14) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+          const spd = 95 + Math.random() * 145;
+          this.prismShards.push({
+            x: prism.x,
+            y: prism.y,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd - 45,
+            size: 4 + Math.random() * 4.5,
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 16,
+            life: 0.65,
+            maxLife: 0.65,
+            color: colors[k % colors.length],
+          });
+        }
+
+        const label =
+          spawnedCount > 0
+            ? `PRISM +${breakPt}PT +${spawnedCount}枚!`
+            : `PRISM +${breakPt}PT!`;
+        this.addFloatingText(prism.x, prism.y - 18, label, '#fde047', 1.28);
+      },
       onJackpot: () => this.handleJackpotFever(),
       onPocketToggleLamp: (pk, lit) => this.handlePocketToggleLamp(pk, lit),
       onRailHit: () => sound.playMedalClink(0.35),
@@ -2733,6 +2950,18 @@ export class MedalGame {
       }
     }
 
+    for (let i = this.prismShards.length - 1; i >= 0; i--) {
+      const sh = this.prismShards[i];
+      sh.life -= dtSec;
+      sh.x += sh.vx * dtSec;
+      sh.y += sh.vy * dtSec;
+      sh.vy += 460 * dtSec;
+      sh.rot += sh.vRot * dtSec;
+      if (sh.life <= 0) {
+        this.prismShards.splice(i, 1);
+      }
+    }
+
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       const ft = this.floatingTexts[i];
       ft.y += ft.vy * dtSec;
@@ -2801,6 +3030,7 @@ export class MedalGame {
 
     this.drawNeonPockets(ctx);
     this.drawLuckyRing(ctx);
+    this.drawPrismTarget(ctx);
     this.drawPins(ctx);
 
     for (const m of this.physics.medals) {
@@ -2825,6 +3055,7 @@ export class MedalGame {
 
     // カタパルト・ワープエフェクト（吸い込み光輪＆出現スパーク）描画
     this.drawWarpEffects(ctx);
+    this.drawPrismShards(ctx);
 
     // プラズマ稲妻アーク放電描画
     this.drawLightningBolts(ctx);
@@ -3850,95 +4081,223 @@ export class MedalGame {
     }
   }
 
-  // サイバー・カタパルト（盤面最上部ワープポータル）描画
+  // サイバー・カタパルト（ワープホール入口＋上空クロス出口ゲート）描画
   private drawCyberCatapults(ctx: CanvasRenderingContext2D): void {
     if (!this.stats.catapultUnlocked) return;
 
-    for (const cat of this.physics.catapults) {
-      ctx.save();
-      const isLeft = cat.side === 'left';
-      const r = cat.radius;
+    const t = this.totalPlayTimeSec;
 
-      // ① ワープ転送フラッシュ・光柱（接触時に上空へ向かって光の柱が伸びる）
+    for (const cat of this.physics.catapults) {
+      const isLeft = cat.side === 'left';
+      const r = cat.radius + cat.launchAnim * 3.5;
+      const rotDir = isLeft ? 1 : -1;
+
+      // === A. 下部入口ポータル（ブラックホール特異点＋ネオン多重渦リング） ===
+      ctx.save();
+
+      // 吸い込み時の昇天ビーム光柱
       if (cat.launchAnim > 0) {
         ctx.save();
-        ctx.shadowColor = '#00f2fe';
+        ctx.shadowColor = '#c084fc';
         ctx.shadowBlur = 24 * cat.launchAnim;
-        const beamGrad = ctx.createLinearGradient(cat.x, cat.y, cat.x, cat.y - 120);
+        const beamGrad = ctx.createLinearGradient(cat.x, cat.y, cat.x, cat.y - 125);
         beamGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-        beamGrad.addColorStop(0.3, 'rgba(0, 242, 254, 0.85)');
-        beamGrad.addColorStop(0.7, 'rgba(56, 189, 248, 0.4)');
+        beamGrad.addColorStop(0.28, 'rgba(192, 132, 252, 0.85)');
+        beamGrad.addColorStop(0.65, 'rgba(0, 242, 254, 0.42)');
         beamGrad.addColorStop(1, 'transparent');
         ctx.fillStyle = beamGrad;
         ctx.beginPath();
-        ctx.moveTo(cat.x - r * 0.7, cat.y);
-        ctx.lineTo(cat.x - r * 0.3, cat.y - 110 * cat.launchAnim);
-        ctx.lineTo(cat.x + r * 0.3, cat.y - 110 * cat.launchAnim);
-        ctx.lineTo(cat.x + r * 0.7, cat.y);
+        ctx.moveTo(cat.x - r * 0.72, cat.y);
+        ctx.lineTo(cat.x - r * 0.22, cat.y - 115 * cat.launchAnim);
+        ctx.lineTo(cat.x + r * 0.22, cat.y - 115 * cat.launchAnim);
+        ctx.lineTo(cat.x + r * 0.72, cat.y);
         ctx.closePath();
         ctx.fill();
         ctx.restore();
       }
 
-      // ② ポッド外殻ベゼル（ダークチタン×サイバーネオンシアン）
-      ctx.shadowColor = '#00f2fe';
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = '#0b1120';
-      ctx.strokeStyle = '#00f2fe';
-      ctx.lineWidth = 2.0;
+      // 広域パープル＆シアン外周オーラ
+      const auraGrad = ctx.createRadialGradient(cat.x, cat.y, r * 0.3, cat.x, cat.y, r * 1.48);
+      auraGrad.addColorStop(0, 'rgba(168, 85, 247, 0.42)');
+      auraGrad.addColorStop(0.6, 'rgba(0, 242, 254, 0.18)');
+      auraGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = auraGrad;
       ctx.beginPath();
-      ctx.arc(cat.x, cat.y, r, 0, Math.PI * 2);
+      ctx.arc(cat.x, cat.y, r * 1.48, 0, Math.PI * 2);
       ctx.fill();
-      ctx.stroke();
 
-      // ③ 吸い込みワープホール内径（深奥ブラックホール・グラデーション）
-      const holeGrad = ctx.createRadialGradient(cat.x, cat.y, 1, cat.x, cat.y, r * 0.82);
+      // ポータル外殻＆特異点コア
+      ctx.shadowColor = cat.launchAnim > 0.1 ? '#ffffff' : '#a855f7';
+      ctx.shadowBlur = 14 + cat.launchAnim * 12;
+      const holeGrad = ctx.createRadialGradient(cat.x, cat.y, 1, cat.x, cat.y, r * 0.95);
       holeGrad.addColorStop(0, '#020617');
-      holeGrad.addColorStop(0.65, '#0c4a6e');
-      holeGrad.addColorStop(1, '#0284c7');
+      holeGrad.addColorStop(0.55, '#1e1b4b');
+      holeGrad.addColorStop(0.85, '#0e7490');
+      holeGrad.addColorStop(1, '#38bdf8');
       ctx.fillStyle = holeGrad;
       ctx.beginPath();
-      ctx.arc(cat.x, cat.y, r * 0.8, 0, Math.PI * 2);
+      ctx.arc(cat.x, cat.y, r * 0.95, 0, Math.PI * 2);
       ctx.fill();
 
-      // ④ 回転サイバーワープリング（ポータル渦巻きアニメーション）
-      ctx.save();
-      ctx.translate(cat.x, cat.y);
-      const rot = this.totalPlayTimeSec * (isLeft ? 3.2 : -3.2);
-      ctx.rotate(rot);
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 1.4;
-      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = cat.launchAnim > 0.15 ? '#ffffff' : '#00f2fe';
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2);
+      ctx.arc(cat.x, cat.y, r, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.strokeStyle = '#bae6fd';
-      ctx.lineWidth = 1.2;
-      ctx.setLineDash([3, 5]);
+      // 逆回転する多重渦巻きアーク＆吸引衛星粒子
+      ctx.save();
+      ctx.translate(cat.x, cat.y);
+
+      ctx.save();
+      ctx.rotate(t * 3.8 * rotDir);
+      ctx.strokeStyle = '#c084fc';
+      ctx.lineWidth = 1.8;
+      for (let a = 0; a < 3; a++) {
+        const start = (a * Math.PI * 2) / 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.72, start, start + Math.PI * 0.36);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      ctx.save();
+      ctx.rotate(-t * 5.0 * rotDir);
+      ctx.strokeStyle = '#67e8f9';
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.arc(0, 0, r * 0.32, 0, Math.PI * 2);
+      ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
 
-      // ⑤ ワープラベル
+      for (let s = 0; s < 3; s++) {
+        const satAng = t * 4.4 * rotDir + (s * Math.PI * 2) / 3;
+        const sx = Math.cos(satAng) * (r + 2.5);
+        const sy = Math.sin(satAng) * (r + 2.5);
+        ctx.fillStyle = s % 2 === 0 ? '#ffffff' : '#e879f9';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 2.0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+
       ctx.fillStyle = '#e0f2fe';
-      ctx.font = '900 7px "Segoe UI", Consolas, sans-serif';
+      ctx.font = '900 7.5px "Segoe UI", Consolas, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('WARP', cat.x, cat.y);
+      ctx.fillText('IN', cat.x, cat.y);
+      ctx.restore();
 
+      // === B. 上空出口受信ゲート（斜め高速射出ノズル） ===
+      ctx.save();
+      const er = 14.5 + cat.launchAnim * 4.0;
+      const ex = cat.exitX;
+      const ey = cat.exitY;
+      const shootAng = isLeft ? Math.PI * 0.78 : Math.PI * 0.22;
+
+      const exitGlow = ctx.createRadialGradient(ex, ey, 2, ex, ey, er * 1.6);
+      exitGlow.addColorStop(0, 'rgba(0, 242, 254, 0.55)');
+      exitGlow.addColorStop(0.55, 'rgba(168, 85, 247, 0.22)');
+      exitGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = exitGlow;
+      ctx.beginPath();
+      ctx.arc(ex, ey, er * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.translate(ex, ey);
+
+      // 回転ダイヤ外枠
+      ctx.save();
+      ctx.rotate(-t * 3.4 * rotDir);
+      ctx.strokeStyle = cat.launchAnim > 0.15 ? '#ffffff' : '#38bdf8';
+      ctx.shadowColor = '#00f2fe';
+      ctx.shadowBlur = 10 + cat.launchAnim * 12;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      for (let v = 0; v < 4; v++) {
+        const va = (v * Math.PI) / 2;
+        const px = Math.cos(va) * er;
+        const py = Math.sin(va) * er;
+        if (v === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+
+      // 内円コア
+      ctx.strokeStyle = '#c084fc';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, er * 0.56, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 中央バンパー方向への射出シェブロンガイド
+      ctx.save();
+      ctx.rotate(shootAng);
+      const chevPulse = 0.45 + 0.45 * Math.sin(t * 7);
+      ctx.strokeStyle = `rgba(103, 232, 249, ${Math.min(1, chevPulse + cat.launchAnim * 0.5).toFixed(2)})`;
+      ctx.lineWidth = 1.8;
+      for (let c = 0; c < 2; c++) {
+        const ox = er + 5 + c * 6;
+        ctx.beginPath();
+        ctx.moveTo(ox - 4, -4.5);
+        ctx.lineTo(ox + 1, 0);
+        ctx.lineTo(ox - 4, 4.5);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 6.5px "Segoe UI", Consolas, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('OUT', 0, 0.5);
       ctx.restore();
     }
   }
 
-  // ワープエフェクト（吸い込み光輪＆出現スパーク）描画
+  // ワープエフェクト（吸い込み光輪・出現スパーク・入口→出口ワープビーム）描画
   private drawWarpEffects(ctx: CanvasRenderingContext2D): void {
     for (const we of this.warpEffects) {
       const alpha = Math.max(0, 1 - we.progress);
       ctx.save();
 
-      if (we.kind === 'implosion') {
+      if (we.kind === 'arc' && we.tx !== undefined && we.ty !== undefined) {
+        // 入口から出口へ一気に駆け抜けるプラズマ・ワープアーク
+        const ctrlX = BOARD_WIDTH * 0.5;
+        const ctrlY = (we.y + we.ty) * 0.48;
+
+        ctx.globalAlpha = alpha * 0.9;
+        ctx.shadowColor = we.color;
+        ctx.shadowBlur = 16;
+        ctx.strokeStyle = '#c084fc';
+        ctx.lineWidth = 4.2 * (1 - we.progress * 0.55);
+        ctx.beginPath();
+        ctx.moveTo(we.x, we.y);
+        ctx.quadraticCurveTo(ctrlX, ctrlY, we.tx, we.ty);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.6 * (1 - we.progress * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(we.x, we.y);
+        ctx.quadraticCurveTo(ctrlX, ctrlY, we.tx, we.ty);
+        ctx.stroke();
+
+        // 軌道上を高速移動する星光ヘッド
+        const ptT = Math.min(1, we.progress * 1.45);
+        const inv = 1 - ptT;
+        const hx = inv * inv * we.x + 2 * inv * ptT * ctrlX + ptT * ptT * we.tx;
+        const hy = inv * inv * we.y + 2 * inv * ptT * ctrlY + ptT * ptT * we.ty;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(hx, hy, 4.2 * (1 - ptT * 0.4), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (we.kind === 'implosion') {
         // 吸い込みエフェクト：外側から中心へ収束するリング
         const r = Math.max(1, we.maxR * (1 - we.progress));
         ctx.shadowColor = we.color;
@@ -3988,6 +4347,121 @@ export class MedalGame {
         }
       }
 
+      ctx.restore();
+    }
+  }
+
+  // プリズム・ターゲット（破壊型ネオンクリスタル）描画
+  private drawPrismTarget(ctx: CanvasRenderingContext2D): void {
+    const prism = this.physics.prismTarget;
+    if (!this.stats.prismTargetUnlocked || !prism.active) return;
+
+    const r = prism.radius * (1 + prism.hitAnim * 0.25);
+    const theme =
+      prism.hp >= 3
+        ? { main: '#38bdf8', edge: '#bae6fd', core: '#e0f2fe', glow: '#00f2fe' }
+        : prism.hp === 2
+        ? { main: '#facc15', edge: '#fef08a', core: '#ffffff', glow: '#f59e0b' }
+        : { main: '#f472b6', edge: '#fbcfe8', core: '#ffffff', glow: '#ec4899' };
+
+    ctx.save();
+    ctx.translate(prism.x, prism.y);
+
+    // 外周ネオンオーラ
+    const aura = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.55);
+    aura.addColorStop(0, `${theme.main}55`);
+    aura.addColorStop(1, 'transparent');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.55, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 回転六角クリスタル本体
+    ctx.save();
+    ctx.rotate(prism.rotAngle);
+    ctx.shadowColor = prism.hitAnim > 0.2 ? '#ffffff' : theme.glow;
+    ctx.shadowBlur = 14 + prism.hitAnim * 10;
+
+    const sides = 6;
+    ctx.beginPath();
+    for (let i = 0; i < sides; i++) {
+      const a = (i * Math.PI * 2) / sides;
+      const rad = i % 2 === 0 ? r : r * 0.86;
+      const px = Math.cos(a) * rad;
+      const py = Math.sin(a) * rad;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+
+    const grad = ctx.createLinearGradient(-r, -r, r, r);
+    grad.addColorStop(0, theme.core);
+    grad.addColorStop(0.5, theme.main);
+    grad.addColorStop(1, '#0f172a');
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.lineWidth = 2.0;
+    ctx.strokeStyle = prism.hitAnim > 0.2 ? '#ffffff' : theme.edge;
+    ctx.stroke();
+
+    // 内部ファセットカット線
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+    ctx.lineWidth = 1.0;
+    for (let i = 0; i < 3; i++) {
+      const a = (i * Math.PI) / 3;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.72, Math.sin(a) * r * 0.72);
+      ctx.lineTo(-Math.cos(a) * r * 0.72, -Math.sin(a) * r * 0.72);
+      ctx.stroke();
+    }
+
+    // 耐久低下時のヒビ割れ表現
+    if (prism.hp < prism.maxHp) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.55, -r * 0.2);
+      ctx.lineTo(-r * 0.1, r * 0.08);
+      ctx.lineTo(r * 0.35, -r * 0.3);
+      if (prism.hp <= 1) {
+        ctx.moveTo(-r * 0.1, r * 0.08);
+        ctx.lineTo(r * 0.2, r * 0.52);
+        ctx.lineTo(r * 0.55, r * 0.22);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 残HPを示す小さな結晶ドット（外周上部に整列）
+    for (let h = 0; h < prism.maxHp; h++) {
+      const dx = (h - (prism.maxHp - 1) * 0.5) * 8;
+      const dy = -(r + 6.5);
+      ctx.fillStyle = h < prism.hp ? theme.edge : 'rgba(100, 116, 139, 0.4)';
+      ctx.beginPath();
+      ctx.arc(dx, dy, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // プリズム破片パーティクル描画
+  private drawPrismShards(ctx: CanvasRenderingContext2D): void {
+    for (const sh of this.prismShards) {
+      const alpha = Math.max(0, sh.life / sh.maxLife);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(sh.x, sh.y);
+      ctx.rotate(sh.rot);
+      ctx.shadowColor = sh.color;
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = sh.color;
+      ctx.beginPath();
+      ctx.moveTo(0, -sh.size);
+      ctx.lineTo(sh.size * 0.75, sh.size * 0.65);
+      ctx.lineTo(-sh.size * 0.65, sh.size * 0.45);
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -4247,15 +4721,22 @@ export class MedalGame {
   private drawMedalTrail(ctx: CanvasRenderingContext2D, m: MedalEntity): void {
     const st = MEDAL_STYLE[m.type];
     const len = m.trail.length;
+    const isWarped = Boolean(m.warpTrailTimer && m.warpTrailTimer > 0);
     ctx.save();
     ctx.lineCap = 'round';
     for (let i = 1; i < len; i++) {
       const p0 = m.trail[i - 1];
       const p1 = m.trail[i];
       const ratio = i / len;
-      ctx.strokeStyle = m.chargeMultiplier > 1.2 ? 'rgba(217, 70, 239, 0.65)' : st.trail;
-      ctx.globalAlpha = ratio * 0.55;
-      ctx.lineWidth = m.radius * 1.15 * ratio;
+      if (isWarped) {
+        ctx.strokeStyle = i % 2 === 0 ? '#00f2fe' : '#c084fc';
+        ctx.globalAlpha = ratio * 0.85;
+        ctx.lineWidth = m.radius * 1.35 * ratio;
+      } else {
+        ctx.strokeStyle = m.chargeMultiplier > 1.2 ? 'rgba(217, 70, 239, 0.65)' : st.trail;
+        ctx.globalAlpha = ratio * 0.55;
+        ctx.lineWidth = m.radius * 1.15 * ratio;
+      }
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
       ctx.lineTo(p1.x, p1.y);
@@ -4822,8 +5303,46 @@ export class MedalGame {
       const isMax = lv >= node.maxLevel;
       const canBuy = this.skillTree.canBuy(node, this.score);
       const isSelected = node.id === this.selectedNodeId;
+      const isGoalPinned = !isMax && this.goalNodeIds.includes(node.id);
+      const bounceRem = this.treeNodeBounceTimers.get(node.id) || 0;
 
       ctx.save();
+
+      if (bounceRem > 0) {
+        const bScale = 1 + Math.sin((bounceRem / 0.32) * Math.PI) * 0.2;
+        ctx.translate(node.gx, node.gy);
+        ctx.scale(bScale, bScale);
+        ctx.translate(-node.gx, -node.gy);
+      }
+
+      // 0. 目標ピン設定ノードの黄金星光リング（Target Pin Star Orbit）
+      if (isGoalPinned) {
+        ctx.save();
+        const pinRot = -this.totalPlayTimeSec * 1.8;
+        ctx.translate(node.gx, node.gy);
+        ctx.rotate(pinRot);
+        ctx.shadowColor = '#fde047';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 5.2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 2つの公転スターマーカー
+        for (let s = 0; s < 2; s++) {
+          const sa = s * Math.PI;
+          const sx = Math.cos(sa) * (r + 5.2);
+          const sy = Math.sin(sa) * (r + 5.2);
+          ctx.fillStyle = '#fef08a';
+          ctx.beginPath();
+          ctx.arc(sx, sy, 2.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
 
       // ① 深宇宙に落ちる完全正円シャドウ
       ctx.fillStyle = 'rgba(2, 4, 14, 0.85)';
@@ -4993,7 +5512,134 @@ export class MedalGame {
       ctx.restore();
     }
 
+    // === 5. ノード取得・強化時のキャンバス演出（衝撃波リング・MAX黄金光輪・隣接解放チェーン粒子） ===
+    for (const eff of this.treePurchaseEffects) {
+      const prog = Math.min(1, eff.t / eff.maxT);
+      const alpha = Math.max(0, 1 - prog);
+      ctx.save();
+
+      if (eff.kind === 'ring') {
+        const ease = 1 - Math.pow(1 - prog, 2.2);
+        const maxR = eff.isMilestone ? 64 : eff.isMax ? 50 : 36;
+        const curR = 16 + (maxR - 16) * ease;
+        const mainCol = eff.isMilestone
+          ? '#fde047'
+          : eff.isMax
+            ? '#7dd3fc'
+            : '#f472b6';
+
+        ctx.shadowColor = mainCol;
+        ctx.shadowBlur = 16 * alpha;
+        ctx.strokeStyle = mainCol;
+        ctx.globalAlpha = alpha * 0.9;
+        ctx.lineWidth = (eff.isMax ? 3.2 : 2.2) * (1 - prog * 0.5);
+        ctx.beginPath();
+        ctx.arc(eff.x, eff.y, curR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        if (eff.isMax || eff.isMilestone) {
+          const innerR = 14 + (maxR * 0.72 - 14) * ease;
+          ctx.strokeStyle = '#fef08a';
+          ctx.globalAlpha = alpha * 0.75;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.arc(eff.x, eff.y, innerR, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // 放射状の星屑スパーク
+          const sparkCount = eff.isMilestone ? 8 : 6;
+          for (let i = 0; i < sparkCount; i++) {
+            const ang = (i / sparkCount) * Math.PI * 2 + prog * 0.6;
+            const sr = curR * 0.95;
+            const sx = eff.x + Math.cos(ang) * sr;
+            const sy = eff.y + Math.sin(ang) * sr;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(sx, sy, 2.0 * alpha, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      } else if (eff.kind === 'chain' && eff.tx !== undefined && eff.ty !== undefined) {
+        const ease = 1 - Math.pow(1 - prog, 1.8);
+        const px = eff.x + (eff.tx - eff.x) * ease;
+        const py = eff.y + (eff.ty - eff.y) * ease;
+
+        // 接続ラインのハイライトフラッシュ
+        ctx.strokeStyle = `rgba(244, 114, 182, ${(alpha * 0.65).toFixed(2)})`;
+        ctx.lineWidth = 2.6 * alpha;
+        ctx.beginPath();
+        ctx.moveTo(eff.x, eff.y);
+        ctx.lineTo(px, py);
+        ctx.stroke();
+
+        // 走る星光粒子
+        ctx.shadowColor = '#fde047';
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = '#fef08a';
+        ctx.globalAlpha = Math.min(1, alpha * 1.4);
+        ctx.beginPath();
+        ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 到達時のターゲット天体リング波紋
+        if (prog > 0.55) {
+          const ringP = (prog - 0.55) / 0.45;
+          ctx.strokeStyle = '#f472b6';
+          ctx.globalAlpha = (1 - ringP) * 0.85;
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.arc(eff.tx, eff.ty, 16 + ringP * 12, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
+    }
+
     ctx.restore();
+  }
+
+  private sanitizeGoalPins(): void {
+    const validIds = new Set(SKILL_NODES.map((n) => n.id));
+    this.goalNodeIds = this.goalNodeIds
+      .filter((id) => {
+        if (!validIds.has(id)) return false;
+        const node = SKILL_NODES.find((n) => n.id === id);
+        if (!node) return false;
+        return this.skillTree.getLevel(id) < node.maxLevel;
+      })
+      .slice(0, 3);
+  }
+
+  private showTreeMilestoneBanner(text: string, durationSec: number = 2.2): void {
+    if (!this.elTreeMilestoneBanner) return;
+    this.elTreeMilestoneBanner.textContent = text;
+    this.elTreeMilestoneBanner.classList.remove('hidden');
+    this.milestoneBannerTimer = durationSec;
+  }
+
+  private toggleGoalPin(nodeId: string): void {
+    this.sanitizeGoalPins();
+    const node = SKILL_NODES.find((n) => n.id === nodeId);
+    if (!node) return;
+    if (this.skillTree.getLevel(node.id) >= node.maxLevel) return;
+
+    const existingIdx = this.goalNodeIds.indexOf(nodeId);
+    if (existingIdx !== -1) {
+      this.goalNodeIds.splice(existingIdx, 1);
+      sound.playMenuBack();
+    } else {
+      if (this.goalNodeIds.length >= 3) {
+        this.showTreeMilestoneBanner('★ 目標ピンは最大3つまで登録できます', 1.8);
+        sound.playMenuBack();
+        return;
+      }
+      this.goalNodeIds.push(nodeId);
+      sound.playPocket(false);
+    }
+
+    this.saveGame();
+    this.updateTreeUI();
   }
 
   private handleTreeTap(lx: number, ly: number): void {
@@ -5020,12 +5666,76 @@ export class MedalGame {
     if (!node) return;
     if (!this.skillTree.canBuy(node, this.score)) return;
 
+    // 解放前の隣接ノードのアンロック状態を記録（新規ルート開通演出用）
+    const prevUnlocked = new Set(
+      SKILL_NODES.filter((n) => this.skillTree.isUnlocked(n)).map((n) => n.id)
+    );
+
     const cost = this.skillTree.getCost(node);
     this.score -= cost;
     this.skillTree.levels[node.id] = this.skillTree.getLevel(node.id) + 1;
     this.stats = this.skillTree.computeStats();
     this.sanitizeEquippedRunes();
     this.syncEngravingStats();
+    this.sanitizeGoalPins();
+
+    const newLv = this.skillTree.getLevel(node.id);
+    const nowMax = newLv >= node.maxLevel;
+    const milestoneIds = new Set([
+      'm2_2',
+      'star_1',
+      'star_4',
+      'star_0',
+      'outer_0',
+      'outer_3',
+      'outer_5',
+      'prism_target',
+      'jp_fever',
+      'jp_freeze',
+      'engraving_slot2',
+      'engraving_adv',
+    ]);
+    const isMilestone = milestoneIds.has(node.id);
+
+    // 1. キャンバス演出：バウンス＆衝撃波リング
+    this.treeNodeBounceTimers.set(node.id, 0.32);
+    this.treePurchaseEffects.push({
+      kind: 'ring',
+      x: node.gx,
+      y: node.gy,
+      t: 0,
+      maxT: isMilestone ? 0.75 : nowMax ? 0.6 : 0.42,
+      isMax: nowMax,
+      isMilestone,
+    });
+
+    // 2. キャンバス演出：新たにアンロックされた隣接ノードへ光の粒子が走る
+    for (const nid of node.neighbors) {
+      if (!prevUnlocked.has(nid)) {
+        const nb = SKILL_NODES.find((n) => n.id === nid);
+        if (nb && this.skillTree.isUnlocked(nb)) {
+          this.treePurchaseEffects.push({
+            kind: 'chain',
+            x: node.gx,
+            y: node.gy,
+            tx: nb.gx,
+            ty: nb.gy,
+            t: 0,
+            maxT: 0.48,
+            isMax: nowMax,
+            isMilestone,
+          });
+        }
+      }
+    }
+
+    // 3. キーノード解放時のトーストバナー表示
+    if (isMilestone) {
+      this.showTreeMilestoneBanner(`✦ UNLOCKED: ${node.name} ✦`, 2.4);
+      sound.playPocket(true);
+    } else if (nowMax) {
+      sound.playPocket(false);
+    }
 
     // 100%完全制覇の瞬間を記録
     const { percent } = this.skillTree.getCompletionRatio();
@@ -5043,10 +5753,50 @@ export class MedalGame {
 
   private updateTreeUI(): void {
     this.updateScoreHUD();
+    this.sanitizeGoalPins();
     this.elTreeScore.innerHTML = `${this.score.toLocaleString()} <span class="twp-unit">PT</span>`;
     const { percent } = this.skillTree.getCompletionRatio();
     this.elTreeCompletion.textContent = `${percent}%`;
     this.elTreeProgressFill.style.width = `${percent}%`;
+
+    // 1. ヘッダー内の目標ピンバー更新（最大3つ・3列グリッド2段表示）
+    if (this.elTreeGoalBar) {
+      if (this.goalNodeIds.length === 0) {
+        this.elTreeGoalBar.classList.add('hidden');
+        this.elTreeOverlay.classList.remove('has-goals');
+        this.elTreeGoalBar.innerHTML = '';
+      } else {
+        this.elTreeGoalBar.classList.remove('hidden');
+        this.elTreeOverlay.classList.add('has-goals');
+        this.elTreeGoalBar.innerHTML = '';
+        for (const gid of this.goalNodeIds) {
+          const gNode = SKILL_NODES.find((n) => n.id === gid);
+          if (!gNode) continue;
+          const cost = this.skillTree.getCost(gNode);
+          const rem = Math.max(0, cost - this.score);
+          const unlocked = this.skillTree.isUnlocked(gNode);
+          const isReady = rem === 0 && unlocked;
+          const remLabel = isReady
+            ? '強化可能!'
+            : rem === 0
+              ? '前提未解放'
+              : `あと${rem.toLocaleString()}PT`;
+
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = `tree-goal-chip${isReady ? ' is-ready' : ''}`;
+          chip.innerHTML = `<span class="tgc-name">★${gNode.name}</span><span class="tgc-rem">${remLabel}</span>`;
+          chip.addEventListener('click', () => {
+            this.selectedNodeId = gNode.id;
+            // 該当ノードが見やすい位置へカメラをスムーズに寄せる
+            this.treeCamX = -gNode.gx * this.treeZoom * 0.45;
+            this.treeCamY = -gNode.gy * this.treeZoom * 0.45;
+            this.updateTreeUI();
+          });
+          this.elTreeGoalBar.appendChild(chip);
+        }
+      }
+    }
 
     let node = SKILL_NODES.find((n) => n.id === this.selectedNodeId);
     if (!node || !this.skillTree.isVisible(node)) {
@@ -5060,6 +5810,36 @@ export class MedalGame {
     this.elNodeTitle.textContent = node.name;
     this.elNodeLevel.textContent = `Lv.${lv}/${node.maxLevel}`;
     this.elNodeDesc.textContent = node.description;
+
+    // 2. 目標ピン登録ボタンの状態更新
+    if (this.elBtnPinNode) {
+      if (isMax) {
+        this.elBtnPinNode.classList.add('hidden');
+      } else {
+        this.elBtnPinNode.classList.remove('hidden');
+        const isPinned = this.goalNodeIds.includes(node.id);
+        this.elBtnPinNode.classList.toggle('is-pinned', isPinned);
+        this.elBtnPinNode.textContent = isPinned
+          ? `★ 目標中 (${this.goalNodeIds.length}/3)`
+          : `☆ 目標 (${this.goalNodeIds.length}/3)`;
+      }
+    }
+
+    // 3. 現在値 → 強化後数値の動的プレビュー描画
+    if (this.elNodeEffectPreview) {
+      const previews = getNodeEffectPreview(this.skillTree, node);
+      if (previews.length === 0) {
+        this.elNodeEffectPreview.innerHTML = '';
+      } else {
+        this.elNodeEffectPreview.innerHTML = previews
+          .map((row) =>
+            isMax
+              ? `<span class="ep-chip is-max"><span class="ep-label">${row.label}:</span><span class="ep-after">${row.to} (MAX)</span></span>`
+              : `<span class="ep-chip"><span class="ep-label">${row.label}:</span><span class="ep-before">${row.from}</span><span class="ep-arrow">→</span><span class="ep-after">${row.to}</span></span>`
+          )
+          .join('');
+      }
+    }
 
     if (isMax) {
       this.elBtnBuyNode.disabled = true;

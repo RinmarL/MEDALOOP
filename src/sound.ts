@@ -182,6 +182,46 @@ class SoundManager {
     osc2.stop(now + 0.23);
   }
 
+  public playPrismHit(hpRemaining: number): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    // 結晶ヒット音：残りHPが減るほどピッチが上がり割れそうな緊張感を演出
+    const baseFreq = hpRemaining <= 1 ? 1560 : hpRemaining === 2 ? 1280 : 1040;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.35, now + 0.08);
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
+  public playPrismBreak(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    // クリスタル破壊：澄んだ高音アルペジオ破砕音
+    const freqs = [1318.5, 1760, 2093, 2637];
+    freqs.forEach((f, idx) => {
+      const t = now + idx * 0.028;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
+      osc.frequency.setValueAtTime(f, t);
+      gain.gain.setValueAtTime(0.12, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.23);
+    });
+  }
+
   public playUpgrade(): void {
     const ctx = this.ensureContext();
     if (!ctx) return;

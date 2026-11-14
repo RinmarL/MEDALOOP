@@ -1,19 +1,16 @@
-# 実装計画書 (Plan.md) — 第101版（中盤〜終盤スキルツリーコストバランス再調整）
+# 実装計画書 (Plan.md) — 第107版（プリズム名称変更 ＆ リザルト画面整理）
 
-## 1. 背景・目的
-- テストプレイ結果および進捗スクリーンショット（`33/86 Lv = 38%`、第3円進行中）の分析により、現行設定（総コスト `1,571,193 PT`）では第3円中盤（10,000 PT前後〜）からポイント増加トリガーおよび第4円ノードが高止まりし、作業感・貯金待ち（熟練 `44.1分` / カジュアル `62.4分`）が発生していた。
-- ユーザーとの協議・合意に基づき、以下の方針で総コスト **`950,203 PT`** へバランスを再調整する：
-  1. **第1円・第2円・第3円前半（計26ノード）**: 現行のまま据え置き。
-  2. **第3円中盤〜高Lv帯（6ノード）**: `m2_2`（バンパー基礎点 II: `5,000/7,500`）、`m2_1`（クローンオーブ: `3,800/5,510/7,990`）、`m2_4`（制限時間延長 IV: `3,200/4,960/7,690`）、`star_1`（ワープホール: `6,200`）、`star_4`（接触強化Ⅱ: `6,600`）、`jp_count_2`（JP枚数増加 II: `8,500`）へ引き下げ。
-  3. **第4円特殊メダル3種（指定値）**: `medal_3`（ゴールド: `6,400`）、`star_3`（プラズマ: `12,800`）、`medal_5`（クロノ: `28,000`）。
-  4. **第4円効率化・時間系（5ノード）**: 数値の伸びに直接影響しない `drop_spd_3`（`6,000` / scale `1.55`）・`pickup_spd_2`・`reload_spd_2`（`5,500` / scale `1.55`）・`r2_4`・`outer_1`（`7,500` / scale `1.55`）を軽量化。
-  5. **第4円花形・刻印拡張（9ノード）**: 達成感を残しつつ総額約95万PTとなるよう調整（`engraving_slot2: 28,000`、`engraving_adv: 36,000`、`jp_freeze: 45,000`、`outer_0: 56,000`、`star_0: 68,000`、`jp_count_3: 72,000`、`outer_3: 93,000`、`jp_fever: 110,000`、`outer_5: 120,000`）。
+## 1. 実装目標（ユーザー指定仕様）
+1. **名称統一（「プリズム・ターゲット」→「プリズム」）**
+   - [src/skillTree.ts](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/src/skillTree.ts) の `prism_target` 表示名・効果プレビュー表記および [for_agent/SPECIFICATION.md](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/for_agent/SPECIFICATION.md) の表記を「**プリズム**」に統一する。
+2. **リザルト画面整理（自己ベスト通知・アニメーション・直近比較の撤去／それまでの自己ベスト表示）**
+   - [index.html](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/index.html) / [src/style.css](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/src/style.css) / [src/game.ts](file:///c:/Users/SHOOO/ドキュメント/Develop/MEDAL/src/game.ts)
+   - `🏆 NEW RECORD!` 通知・`.is-new` パルスアニメ・`.is-new-record` 枠光彩・獲得PTカウントアップアニメ・直近平均比較（`#res-avg-badge`）を撤去し、獲得スコアを即時確定表示する。
+   - 更新前の自己ベスト値を `それまでの自己ベスト: X PT` として `#res-record-badge` にシンプルに表示する（内部記録 `bestRoundScore` は従来通り最大値で保存）。
 
-## 2. 修正対象ファイル
-1. `src/skillTree.ts`: `SKILL_NODES` 内の対象23ノードの `baseCost` / `costScale` 更新
-2. `for_agent/SPECIFICATION.md`: 第101版コストバランス調整仕様および改訂履歴の追記
-3. `AICHANGELOG.md`: 第101版改修ログ追記
+## 2. 変更完了ファイル
+- `src/skillTree.ts`, `index.html`, `src/style.css`, `src/game.ts`, `for_agent/SPECIFICATION.md`, `AICHANGELOG.md`
 
-## 3. 検証計画
-- `npx tsc --noEmit` および `npm run build` の通過確認（エラー0件）。
-- 編集後の実コード（`src/skillTree.ts`, `src/physics.ts`）をバンドルして実行し、総コスト **`950,203 PT`**、全49ノードのレベル別価格整合性、および通しキャンペーン平均（熟練・カジュアル）を確認する。
+## 3. 検証結果
+- `npx tsc --noEmit` / `npm run build` 成功。
+- `verify_v105.cjs` 単体＆実機ヘッドレスChrome（`480x820`）で `プリズム` 表示・即時確定リザルト表示・コンソールエラー `0` 件を確認。
