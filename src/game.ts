@@ -36,12 +36,14 @@ import {
   PickupParticle,
   PinEntity,
   PocketSlot,
+  PrismTarget,
   RuneDef,
   RuneId,
   RUNE_DEFINITIONS,
   getRuneSvgIcon,
   SkillNodeDef,
   SlotInsertAnim,
+  SlotSymbol,
   WarpEffect,
 } from './types';
 
@@ -215,6 +217,30 @@ export class MedalGame {
   private jackpotFreezeTimer: number = 0; // 0〜4.4秒
   private freezeStockMedals: Array<{ x: number; y: number; type: MedalType }> = [];
 
+  // ホットポケット＆簡易スロット管理
+  private hotPocketIndex: number = 2; // 0〜4の現在HOTなポケット
+  private hotPocketTimer: number = 5.0; // 5.0秒で次のポケットへ移動
+  private readonly hotPocketInterval: number = 5.0;
+  private slotHoldCount: number = 0; // 最大4保留
+  private isSlotSpinning: boolean = false;
+  private slotSpinElapsed: number = 2.5; // 0〜2.0秒
+  private slotCurrentTarget: SlotSymbol = 'miss';
+  private slotFinalSymbols: [string, string, string] = ['7', '7', '7'];
+  private slotReelSymbols: [string, string, string] = ['7', '7', '7'];
+  private slotReelStopped: [boolean, boolean, boolean] = [true, true, true];
+  private slotWinFlashTimer: number = 0;
+  private slotRestartCooldown: number = 0; // リール全停止後の再始動待機タイマー（0.6秒）
+  private slotShootQueue: Array<{ type: MedalType; delay: number }> = [];
+  private slotShootAlternator: boolean = false;
+
+  // スロット出目バフタイマー
+  private autoMagnetTimer: number = 0; // 🧲: 5秒間自動回収・装填・投下
+  private autoMagnetPickupTimer: number = 0;
+  private autoMagnetReloadTimer: number = 0;
+  private autoMagnetDropTimer: number = 0;
+  private slotScoreBoostTimer: number = 0; // 🕐: 5秒間全ポケット得点x1.5
+  private slotPinBonusTimer: number = 0; // 💎: 5秒間ピン点数+3
+
   // ホーム画面3Dコイン手触り跳ねギミック＆固有演出用
   private homeCoinHopOffsets: number[] = [0, 0, 0, 0, 0, 0];
   private homeCoinHopVels: number[] = [0, 0, 0, 0, 0, 0];
@@ -293,6 +319,7 @@ export class MedalGame {
   private elBtnResultTree = document.getElementById('btn-result-tree') as HTMLButtonElement | null;
   private elResultTreeBadge = document.getElementById('result-tree-badge');
   private elBtnResultOk = document.getElementById('btn-result-ok')!;
+  private elBtnResultHome = document.getElementById('btn-result-home') as HTMLButtonElement | null;
 
   // スキルツリー画面DOM
   private elTreeOverlay = document.getElementById('tree-overlay')!;
@@ -481,7 +508,7 @@ export class MedalGame {
       }
     });
 
-    // リザルト画面ボタン：「強化へ」と「もう一度」
+    // リザルト画面ボタン：「強化へ」と「もう一度」と「ホームへ戻る」
     this.elBtnResultTree?.addEventListener('click', () => {
       sound.playMenuConfirm('tree');
       this.round++;
@@ -494,6 +521,13 @@ export class MedalGame {
       this.round++;
       this.saveGame();
       this.startRound();
+    });
+
+    this.elBtnResultHome?.addEventListener('click', () => {
+      sound.playMenuBack();
+      this.round++;
+      this.saveGame();
+      this.enterHomePhase();
     });
 
     // スキルツリー画面ボタン（単押し取得・強化、目標ピン登録、ホームへ戻る）
@@ -1815,6 +1849,11 @@ export class MedalGame {
     this.isJackpotFreezing = false;
     this.jackpotFreezeTimer = 0;
     this.freezeStockMedals = [];
+    this.slotShootQueue = [];
+    this.slotRestartCooldown = 0;
+    this.autoMagnetTimer = 0;
+    this.slotScoreBoostTimer = 0;
+    this.slotPinBonusTimer = 0;
     if (this.physics) {
       this.physics.resetPocketsLit();
     }
@@ -1852,6 +1891,27 @@ export class MedalGame {
     this.warpEffects = [];
     this.lightningBolts = [];
     this.prismShards = [];
+
+    // ホットポケット＆スロット初期化
+    this.hotPocketIndex = Math.floor(Math.random() * 5);
+    this.hotPocketTimer = this.hotPocketInterval;
+    this.slotHoldCount = 0;
+    this.isSlotSpinning = false;
+    this.slotSpinElapsed = 2.5;
+    this.slotCurrentTarget = 'miss';
+    this.slotFinalSymbols = ['7', '7', '7'];
+    this.slotReelSymbols = ['7', '7', '7'];
+    this.slotReelStopped = [true, true, true];
+    this.slotWinFlashTimer = 0;
+    this.slotRestartCooldown = 0;
+    this.slotShootQueue = [];
+    this.slotShootAlternator = false;
+    this.autoMagnetTimer = 0;
+    this.autoMagnetPickupTimer = 0;
+    this.autoMagnetReloadTimer = 0;
+    this.autoMagnetDropTimer = 0;
+    this.slotScoreBoostTimer = 0;
+    this.slotPinBonusTimer = 0;
 
     this.physics.medals = [];
     this.physics.setupBoard(this.stats);
@@ -2103,8 +2163,11 @@ export class MedalGame {
   private handlePinHit(medal: MedalEntity, pin: PinEntity): void {
     this.roundPinHits++;
 
-    // バンパー（ピン）は初期状態では点数なし（0点）
-    if (this.stats.basePinScore <= 0 || pin.baseScore <= 0) {
+    const slotPinBonus = this.slotPinBonusTimer > 0 ? 3 : 0;
+    const effectiveBase = pin.baseScore + slotPinBonus;
+
+    // バンパー（ピン）は初期状態では点数なし（0点）。ただしダイヤスロット効果発動中は基礎点+3
+    if ((this.stats.basePinScore <= 0 && slotPinBonus <= 0) || effectiveBase <= 0) {
       sound.playMedalClink(0.35);
       return;
     }
@@ -2117,7 +2180,7 @@ export class MedalGame {
         : 1.0;
     // ピン衝突得点には接触倍率は掛けず、基礎点×特効×全体倍率×フィーバー×ドラコで計算
     const raw =
-      pin.baseScore * bounceMult * this.stats.globalScoreMultiplier * feverMult * dracoMult;
+      effectiveBase * bounceMult * this.stats.globalScoreMultiplier * feverMult * dracoMult;
     const gained = Math.max(1, Math.round(raw));
 
     this.score += gained;
@@ -2205,12 +2268,14 @@ export class MedalGame {
 
     const totalEngravingMult =
       dracoMult * pegasusMult * centaurusMult * altairMult * fortunaMult;
+    const slotScoreBoost = this.slotScoreBoostTimer > 0 ? 1.5 : 1.0;
     const raw =
       this.stats.basePocketScore *
       pocket.scoreMultiplier *
       medal.chargeMultiplier *
       this.stats.globalScoreMultiplier *
       feverMult *
+      slotScoreBoost *
       totalEngravingMult;
     const gained = Math.max(1, Math.round(raw));
 
@@ -2240,6 +2305,7 @@ export class MedalGame {
     if (fortunaMult > 1) {
       tagParts.push(`🎲+${Math.round((fortunaMult - 1) * 100)}%${fortunaMult >= 2.0 ? '!' : ''}`);
     }
+    if (slotScoreBoost > 1.0) tagParts.push('🕐x1.5');
 
     const totalGained = gained + runeBonus;
     this.score += totalGained;
@@ -2321,6 +2387,23 @@ export class MedalGame {
       sound.playPocket(true);
     } else {
       sound.playPocket(false);
+    }
+
+    // HOTポケット入賞＆スロット保留判定
+    if (this.stats.hotSlotUnlocked && pocket.index === this.hotPocketIndex) {
+      if (this.slotHoldCount < 4) {
+        this.slotHoldCount++;
+        this.addFloatingText(
+          centerX,
+          POCKET_ENTRY_Y - 26,
+          `HOLD +1 (${this.slotHoldCount}/4)`,
+          '#facc15',
+          1.2
+        );
+        if (!this.isSlotSpinning && this.slotRestartCooldown <= 0) {
+          this.startSlotSpin();
+        }
+      }
     }
 
     this.updateScoreHUD();
@@ -2789,8 +2872,17 @@ export class MedalGame {
       onLuckyRingPass: (m, ring) => this.handleLuckyRingPass(m, ring),
       onPrismHit: (_medal, prism) => {
         sound.playPrismHit(prism.hp);
-        // ヒット時の結晶欠片スパーク
-        const hitColor = prism.hp <= 1 ? '#f472b6' : prism.hp === 2 ? '#fde047' : '#38bdf8';
+        // ヒット時の結晶欠片スパーク（残HPに応じた段階カラー）
+        const hitColor =
+          prism.hp <= 1
+            ? '#f43f5e'
+            : prism.hp === 2
+            ? '#fb923c'
+            : prism.hp === 3
+            ? '#fde047'
+            : prism.hp === 4
+            ? '#34d399'
+            : '#38bdf8';
         for (let k = 0; k < 4; k++) {
           const ang = Math.random() * Math.PI * 2;
           const spd = 70 + Math.random() * 80;
@@ -2807,7 +2899,7 @@ export class MedalGame {
             color: hitColor,
           });
         }
-        this.addFloatingText(prism.x, prism.y - 16, `CRACK! ${prism.hp}/${prism.maxHp}`, hitColor, 0.98);
+        this.addFloatingText(prism.x, prism.y - 16, 'CRACK!', hitColor, 0.98);
       },
       onPrismBreak: (_medal, prism, spawnedCount) => {
         sound.playPrismBreak();
@@ -2970,6 +3062,60 @@ export class MedalGame {
         this.floatingTexts.splice(i, 1);
       }
     }
+
+    // ホットポケット移動タイマー更新
+    if (this.stats.hotSlotUnlocked) {
+      this.hotPocketTimer -= dtSec;
+      if (this.hotPocketTimer <= 0) {
+        this.hotPocketTimer = this.hotPocketInterval;
+        const others = [0, 1, 2, 3, 4].filter((idx) => idx !== this.hotPocketIndex);
+        this.hotPocketIndex = others[Math.floor(Math.random() * others.length)];
+      }
+    }
+
+    // スロット出目バフタイマー更新
+    if (this.slotScoreBoostTimer > 0) {
+      this.slotScoreBoostTimer = Math.max(0, this.slotScoreBoostTimer - dtSec);
+    }
+    if (this.slotPinBonusTimer > 0) {
+      this.slotPinBonusTimer = Math.max(0, this.slotPinBonusTimer - dtSec);
+    }
+
+    // 🧲 オート機能（5秒間自動回収・装填・投下）
+    if (this.autoMagnetTimer > 0) {
+      this.autoMagnetTimer = Math.max(0, this.autoMagnetTimer - dtSec);
+
+      // 1. 自動回収（トレイから手元ストックへ）
+      this.autoMagnetPickupTimer -= dtSec;
+      if (this.autoMagnetPickupTimer <= 0) {
+        this.autoMagnetPickupTimer = 0.08;
+        const trayMedal = this.physics.medals.find((m) => m.zone === 'tray');
+        if (trayMedal) {
+          this.tryPickupFromTray(trayMedal.x, trayMedal.y);
+        }
+      }
+
+      // 2. 自動装填（手元ストックから投入口へ）
+      this.autoMagnetReloadTimer -= dtSec;
+      if (this.autoMagnetReloadTimer <= 0) {
+        this.autoMagnetReloadTimer = 0.08;
+        this.tryInsertMedalToSlot();
+      }
+
+      // 3. 自動投下（投入口装填メダルを盤面へ）
+      this.autoMagnetDropTimer -= dtSec;
+      if (this.autoMagnetDropTimer <= 0) {
+        this.autoMagnetDropTimer = 0.12;
+        const rx = WALL_LEFT + 25 + Math.random() * (WALL_RIGHT - WALL_LEFT - 50);
+        this.tryDropMedal(rx);
+      }
+    }
+
+    // 簡易スロット＆サイドシューター更新
+    if (this.stats.hotSlotUnlocked) {
+      this.updateSlot(dtSec);
+    }
+    this.updateSlotShooter(dtSec);
   }
 
   private renderPlayPhase(): void {
@@ -3059,6 +3205,11 @@ export class MedalGame {
 
     // プラズマ稲妻アーク放電描画
     this.drawLightningBolts(ctx);
+
+    // 簡易スロット窓描画（盤面上部）
+    if (this.stats.hotSlotUnlocked) {
+      this.drawSlotWindow(ctx);
+    }
 
     ctx.restore();
 
@@ -4351,18 +4502,28 @@ export class MedalGame {
     }
   }
 
-  // プリズム・ターゲット（破壊型ネオンクリスタル）描画
+  // プリズム（破壊型ネオンクリスタル）描画（複数同時出現対応）
   private drawPrismTarget(ctx: CanvasRenderingContext2D): void {
-    const prism = this.physics.prismTarget;
-    if (!this.stats.prismTargetUnlocked || !prism.active) return;
+    if (this.stats.prismTargetCount <= 0) return;
+    for (const prism of this.physics.prismTargets) {
+      if (!prism.active) continue;
+      this.drawSinglePrismTarget(ctx, prism);
+    }
+  }
 
+  private drawSinglePrismTarget(ctx: CanvasRenderingContext2D, prism: PrismTarget): void {
     const r = prism.radius * (1 + prism.hitAnim * 0.25);
+    // 残HP（5〜1）をHPバー・ドットではなく5段階のクリスタル発光色で表現
     const theme =
-      prism.hp >= 3
-        ? { main: '#38bdf8', edge: '#bae6fd', core: '#e0f2fe', glow: '#00f2fe' }
+      prism.hp >= 5
+        ? { main: '#38bdf8', edge: '#bae6fd', core: '#e0f2fe', glow: '#00f2fe' } // 5: シアン（無傷）
+        : prism.hp === 4
+        ? { main: '#34d399', edge: '#a7f3d0', core: '#ecfdf5', glow: '#10b981' } // 4: エメラルド
+        : prism.hp === 3
+        ? { main: '#facc15', edge: '#fef08a', core: '#ffffff', glow: '#eab308' } // 3: イエロー
         : prism.hp === 2
-        ? { main: '#facc15', edge: '#fef08a', core: '#ffffff', glow: '#f59e0b' }
-        : { main: '#f472b6', edge: '#fbcfe8', core: '#ffffff', glow: '#ec4899' };
+        ? { main: '#fb923c', edge: '#fed7aa', core: '#ffffff', glow: '#f97316' } // 2: オレンジ
+        : { main: '#f43f5e', edge: '#fecdd3', core: '#ffffff', glow: '#ec4899' }; // 1: クリムゾンピンク（瀕死）
 
     ctx.save();
     ctx.translate(prism.x, prism.y);
@@ -4415,33 +4576,34 @@ export class MedalGame {
       ctx.stroke();
     }
 
-    // 耐久低下時のヒビ割れ表現
+    // 耐久低下時の段階的ヒビ割れ表現（HP4以下で徐々に亀裂が増加）
     if (prism.hp < prism.maxHp) {
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = prism.hp <= 2 ? 1.8 : 1.4;
       ctx.beginPath();
+      // HP4以下：第1亀裂
       ctx.moveTo(-r * 0.55, -r * 0.2);
       ctx.lineTo(-r * 0.1, r * 0.08);
-      ctx.lineTo(r * 0.35, -r * 0.3);
-      if (prism.hp <= 1) {
+      if (prism.hp <= 3) {
+        // HP3以下：第2亀裂
+        ctx.lineTo(r * 0.38, -r * 0.32);
+      }
+      if (prism.hp <= 2) {
+        // HP2以下：第3分岐亀裂
         ctx.moveTo(-r * 0.1, r * 0.08);
         ctx.lineTo(r * 0.2, r * 0.52);
         ctx.lineTo(r * 0.55, r * 0.22);
       }
+      if (prism.hp <= 1) {
+        // HP1：逆側にも深い亀裂
+        ctx.moveTo(r * 0.12, -r * 0.12);
+        ctx.lineTo(-r * 0.38, r * 0.45);
+        ctx.moveTo(-r * 0.1, r * 0.08);
+        ctx.lineTo(-r * 0.52, r * 0.18);
+      }
       ctx.stroke();
     }
     ctx.restore();
-
-    // 残HPを示す小さな結晶ドット（外周上部に整列）
-    for (let h = 0; h < prism.maxHp; h++) {
-      const dx = (h - (prism.maxHp - 1) * 0.5) * 8;
-      const dy = -(r + 6.5);
-      ctx.fillStyle = h < prism.hp ? theme.edge : 'rgba(100, 116, 139, 0.4)';
-      ctx.beginPath();
-      ctx.arc(dx, dy, 2.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
     ctx.restore();
   }
 
@@ -4521,6 +4683,11 @@ export class MedalGame {
       }
       ctx.restore();
 
+      // HOTポケットオーラ＆バッジ描画
+      if (this.stats.hotSlotUnlocked && pk.index === this.hotPocketIndex) {
+        this.drawHotPocketAura(ctx, pk);
+      }
+
       // === JACKPOT LED ランプ（スロット上部中央：トグル点灯インジケーター） ===
       const lampX = pk.x1 + pw * 0.5;
       const lampY = gateY - 11;
@@ -4583,6 +4750,497 @@ export class MedalGame {
       ctx.arc(divX, POCKET_ENTRY_Y - 4, 3.5, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  /**
+   * 簡易スロット抽選（合計100%）
+   * ハズレ: 60%
+   * ベル: 20%
+   * オート: 7%
+   * 時計: 6%
+   * ダイヤ: 5%
+   * 赤7: 2%
+   */
+  private rollSlotTarget(): SlotSymbol {
+    const roll = Math.random() * 100;
+    if (roll < 2.0) return '7';
+    if (roll < 7.0) return 'dia';
+    if (roll < 13.0) return 'clock';
+    if (roll < 20.0) return 'auto';
+    if (roll < 40.0) return 'bell';
+    return 'miss';
+  }
+
+  /**
+   * スロットスピン開始（保留を1消費）
+   */
+  private startSlotSpin(): void {
+    if (this.slotHoldCount <= 0 || this.isSlotSpinning) return;
+    this.slotHoldCount--;
+    this.isSlotSpinning = true;
+    this.slotSpinElapsed = 0;
+    this.slotReelStopped = [false, false, false];
+    this.slotCurrentTarget = this.rollSlotTarget();
+
+    const symbols: Array<'bell' | 'auto' | 'clock' | 'dia' | '7'> = ['bell', 'auto', 'clock', 'dia', '7'];
+
+    if (this.slotCurrentTarget !== 'miss') {
+      // 当選：3リールすべて揃う
+      this.slotFinalSymbols = [this.slotCurrentTarget, this.slotCurrentTarget, this.slotCurrentTarget];
+    } else {
+      // ハズレ（60%）
+      // 約20%の確率でリーチハズレ [A, A, B]
+      const isReachMiss = Math.random() < 0.33;
+      if (isReachMiss) {
+        const symA = symbols[Math.floor(Math.random() * symbols.length)];
+        const otherSymbols = symbols.filter((s) => s !== symA);
+        const symB = otherSymbols[Math.floor(Math.random() * otherSymbols.length)];
+        this.slotFinalSymbols = [symA, symA, symB];
+      } else {
+        // 通常ハズレ：バラケ
+        const s0 = symbols[Math.floor(Math.random() * symbols.length)];
+        const s1Candidates = symbols.filter((s) => s !== s0);
+        const s1 = s1Candidates[Math.floor(Math.random() * s1Candidates.length)];
+        const s2Candidates = symbols.filter((s) => s !== s0 && s !== s1);
+        const s2 =
+          s2Candidates.length > 0
+            ? s2Candidates[Math.floor(Math.random() * s2Candidates.length)]
+            : symbols[Math.floor(Math.random() * symbols.length)];
+        this.slotFinalSymbols = [s0, s1, s2];
+      }
+    }
+
+    sound.playSlotSpin();
+  }
+
+  /**
+   * スロットスピン・リール停止・保留自動回転の更新
+   */
+  private updateSlot(dtSec: number): void {
+    if (this.slotWinFlashTimer > 0) {
+      this.slotWinFlashTimer = Math.max(0, this.slotWinFlashTimer - dtSec);
+    }
+    if (this.slotRestartCooldown > 0) {
+      this.slotRestartCooldown = Math.max(0, this.slotRestartCooldown - dtSec);
+    }
+
+    if (!this.isSlotSpinning) {
+      // スピン中でなく保留がある場合、リール全停止から0.6秒空けて自動で次をスピン
+      if (this.slotHoldCount > 0 && this.slotRestartCooldown <= 0) {
+        this.startSlotSpin();
+      }
+      return;
+    }
+
+    this.slotSpinElapsed += dtSec;
+    const isReach = this.slotFinalSymbols[0] === this.slotFinalSymbols[1];
+    const leftStopTime = 0.7;
+    const centerStopTime = 1.2;
+    const rightStopTime = isReach ? 1.95 : 1.7;
+
+    const symbols: Array<'bell' | 'auto' | 'clock' | 'dia' | '7'> = ['bell', 'auto', 'clock', 'dia', '7'];
+
+    // 左リール
+    if (this.slotSpinElapsed < leftStopTime) {
+      const idx = Math.floor(this.slotSpinElapsed * 24) % symbols.length;
+      this.slotReelSymbols[0] = symbols[idx];
+    } else if (!this.slotReelStopped[0]) {
+      this.slotReelStopped[0] = true;
+      this.slotReelSymbols[0] = this.slotFinalSymbols[0];
+      sound.playSlotReelStop(false);
+    }
+
+    // 中リール
+    if (this.slotSpinElapsed < centerStopTime) {
+      const idx = Math.floor(this.slotSpinElapsed * 24 + 1) % symbols.length;
+      this.slotReelSymbols[1] = symbols[idx];
+    } else if (!this.slotReelStopped[1]) {
+      this.slotReelStopped[1] = true;
+      this.slotReelSymbols[1] = this.slotFinalSymbols[1];
+      sound.playSlotReelStop(isReach);
+    }
+
+    // 右リール
+    if (this.slotSpinElapsed < rightStopTime) {
+      // リーチ時は後半スロードラッグ回転（緊張感演出）
+      const speed = isReach && this.slotSpinElapsed > 1.2 ? 10 : 24;
+      const idx = Math.floor(this.slotSpinElapsed * speed + 2) % symbols.length;
+      this.slotReelSymbols[2] = symbols[idx];
+    } else if (!this.slotReelStopped[2]) {
+      this.slotReelStopped[2] = true;
+      this.slotReelSymbols[2] = this.slotFinalSymbols[2];
+      sound.playSlotReelStop(false);
+      this.isSlotSpinning = false;
+      this.slotRestartCooldown = 0.6; // リール全停止後0.6秒空けてから再始動
+
+      // 当選判定
+      if (this.slotCurrentTarget !== 'miss') {
+        this.applySlotReward(this.slotCurrentTarget);
+      }
+    }
+  }
+
+  /**
+   * スロット当選時の報酬・演出適用（文字バナーは出さず演出のみ）
+   */
+  private applySlotReward(symbol: SlotSymbol): void {
+    if (symbol === 'miss') return;
+    sound.playSlotWin(symbol);
+    this.slotWinFlashTimer = 1.2;
+
+    switch (symbol) {
+      case 'bell':
+        // 🔔 ベル: 通常メダル4枚射出
+        this.enqueueSlotShoots('normal', 4);
+        break;
+      case 'auto':
+        // 🧲 オート: 5秒間自動回収・装填・投下
+        this.autoMagnetTimer = 5.0;
+        break;
+      case 'clock':
+        // 🕐 時計: 残り時間+2秒 ＆ 5秒間全ポケット得点x1.5
+        this.timeRemaining += 2.0;
+        this.slotScoreBoostTimer = 5.0;
+        break;
+      case 'dia':
+        // 💎 ダイヤ: バウンスメダル5枚射出 ＆ 5秒間ピン点数+3
+        this.enqueueSlotShoots('bounce', 5);
+        this.slotPinBonusTimer = 5.0;
+        break;
+      case '7':
+        // 赤7: ゴールドメダル10枚射出 ＆ 画面揺れ演出
+        this.enqueueSlotShoots('gold', 10);
+        this.screenShakeTimer = 0.5;
+        break;
+    }
+  }
+
+  /**
+   * サイドシューターへのメダル射出キュー追加
+   */
+  private enqueueSlotShoots(type: MedalType, count: number): void {
+    for (let i = 0; i < count; i++) {
+      this.slotShootQueue.push({
+        type,
+        delay: i * 0.15,
+      });
+    }
+  }
+
+  /**
+   * スロット当選メダルの左右シューター射出更新
+   */
+  private updateSlotShooter(dtSec: number): void {
+    if (this.slotShootQueue.length === 0) return;
+
+    for (let i = this.slotShootQueue.length - 1; i >= 0; i--) {
+      const item = this.slotShootQueue[i];
+      item.delay -= dtSec;
+      if (item.delay <= 0) {
+        this.slotShootQueue.splice(i, 1);
+
+        sound.playJackpotShoot();
+        const isLeft = this.slotShootAlternator;
+        this.slotShootAlternator = !this.slotShootAlternator;
+
+        const spawnX = isLeft ? 45 : 415;
+        const spawnY = 62;
+        const targetX = isLeft ? 170 + Math.random() * 50 : 290 - Math.random() * 50;
+        const targetY = 240 + Math.random() * 60;
+        const angle = Math.atan2(targetY - spawnY, targetX - spawnX) + (Math.random() - 0.5) * 0.18;
+        const speed = 320 + Math.random() * 60;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed;
+
+        if (isLeft) {
+          this.muzzleFlashLeft = 1.0;
+        } else {
+          this.muzzleFlashRight = 1.0;
+        }
+
+        const medal = this.physics.spawnMedal(spawnX, spawnY, item.type, 'board');
+        medal.vx = vx;
+        medal.vy = vy;
+        medal.chargeMultiplier = 1.0;
+      }
+    }
+  }
+
+  /**
+   * 盤面上部 簡易スロット窓＆保留ランプの描画
+   * 位置: cx = 230, cy = 38, w = 156, h = 42
+   */
+  private drawSlotWindow(ctx: CanvasRenderingContext2D): void {
+    const cx = BOARD_WIDTH * 0.5; // 230
+    const cy = 38;
+    const w = 156;
+    const h = 42;
+    const x = cx - w * 0.5; // 152
+    const y = cy - h * 0.5; // 17
+
+    ctx.save();
+
+    // 1. スロット外枠（サイバーダーククローム＆ゴールドベゼル）
+    const isWinFlash = this.slotWinFlashTimer > 0;
+    const flashPhase = isWinFlash ? Math.sin(this.slotWinFlashTimer * 18) : 0;
+    const isRed7Win = isWinFlash && this.slotCurrentTarget === '7';
+
+    if (isWinFlash) {
+      ctx.shadowColor = isRed7Win ? '#f43f5e' : '#facc15';
+      ctx.shadowBlur = 14 + flashPhase * 8;
+    } else {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+      ctx.shadowBlur = 8;
+    }
+
+    // 外枠ベゼル背景
+    const bezelGrad = ctx.createLinearGradient(x, y, x, y + h);
+    if (isRed7Win) {
+      bezelGrad.addColorStop(0, '#fda4af');
+      bezelGrad.addColorStop(0.5, '#be123c');
+      bezelGrad.addColorStop(1, '#4c0519');
+    } else if (isWinFlash) {
+      bezelGrad.addColorStop(0, '#fef08a');
+      bezelGrad.addColorStop(0.5, '#ca8a04');
+      bezelGrad.addColorStop(1, '#422006');
+    } else {
+      bezelGrad.addColorStop(0, '#475569');
+      bezelGrad.addColorStop(0.5, '#1e293b');
+      bezelGrad.addColorStop(1, '#0f172a');
+    }
+    ctx.fillStyle = bezelGrad;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 6);
+    ctx.fill();
+
+    // 外枠境界線
+    ctx.strokeStyle = isRed7Win
+      ? '#ffe4e6'
+      : isWinFlash
+      ? '#fef9c3'
+      : 'rgba(148, 163, 184, 0.55)';
+    ctx.lineWidth = isWinFlash ? 2.0 : 1.2;
+    ctx.stroke();
+
+    // 2. 3リール窓（左・中・右）
+    const reelW = 38;
+    const reelH = 26;
+    const reelY = y + 5;
+    const reelSpacing = 44;
+    const reelCenters = [cx - reelSpacing, cx, cx + reelSpacing];
+
+    for (let i = 0; i < 3; i++) {
+      const rx = reelCenters[i] - reelW * 0.5;
+      const ry = reelY;
+
+      // リール窓背景（深黒クリスタル）
+      ctx.fillStyle = '#060a12';
+      ctx.beginPath();
+      ctx.roundRect(rx, ry, reelW, reelH, 4);
+      ctx.fill();
+
+      // リール内光沢（上下シャドウ）
+      const reelInnerGrad = ctx.createLinearGradient(rx, ry, rx, ry + reelH);
+      reelInnerGrad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+      reelInnerGrad.addColorStop(0.2, 'rgba(255, 255, 255, 0.0)');
+      reelInnerGrad.addColorStop(0.8, 'rgba(0, 0, 0, 0.0)');
+      reelInnerGrad.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+      ctx.fillStyle = reelInnerGrad;
+      ctx.fill();
+
+      // リール枠線
+      ctx.strokeStyle = this.slotReelStopped[i]
+        ? 'rgba(100, 116, 139, 0.5)'
+        : 'rgba(56, 189, 248, 0.8)';
+      ctx.lineWidth = 1.0;
+      ctx.stroke();
+
+      // リール図柄描画
+      const sym = this.slotReelSymbols[i];
+      this.drawSlotSymbol(ctx, sym, reelCenters[i], reelY + reelH * 0.5);
+    }
+
+    // 3. 保留インジケーターランプ（下部：4灯）
+    const holdY = y + h - 6;
+    const holdStartX = cx - 24;
+    const holdSpacing = 16;
+
+    for (let hIdx = 0; hIdx < 4; hIdx++) {
+      const hx = holdStartX + hIdx * holdSpacing;
+      const isLit = hIdx < this.slotHoldCount;
+
+      ctx.beginPath();
+      ctx.arc(hx, holdY, 2.8, 0, Math.PI * 2);
+
+      if (isLit) {
+        ctx.fillStyle = this.slotHoldCount >= 4 ? '#fbbf24' : '#38bdf8';
+        ctx.shadowColor = this.slotHoldCount >= 4 ? '#f59e0b' : '#00f2fe';
+        ctx.shadowBlur = 6;
+        ctx.fill();
+        // 中心芯
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(hx, holdY, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = 'rgba(51, 65, 85, 0.6)';
+        ctx.shadowBlur = 0;
+        ctx.fill();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * スロットリールシンボル描画
+   */
+  private drawSlotSymbol(ctx: CanvasRenderingContext2D, sym: string, x: number, y: number): void {
+    ctx.save();
+    ctx.translate(x, y);
+
+    if (sym === '7') {
+      // 赤7（静止画、深紅/ルビーグラデーション＋シャンパンゴールド縁取り）
+      this.drawRedSeven(ctx, 0, 0, 22, 22);
+    } else if (sym === 'bell') {
+      // 🔔 ベル
+      ctx.font = '16px "Segoe UI Emoji", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🔔', 0, 0);
+    } else if (sym === 'auto') {
+      // 🧲 オート
+      ctx.font = '16px "Segoe UI Emoji", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🧲', 0, 0);
+    } else if (sym === 'clock') {
+      // 🕐 時計
+      ctx.font = '16px "Segoe UI Emoji", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🕐', 0, 0);
+    } else if (sym === 'dia') {
+      // 💎 ダイヤ
+      ctx.font = '16px "Segoe UI Emoji", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('💎', 0, 0);
+    } else {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(sym, 0, 0);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * 赤7の描画（静止画、アニメーションなし、深紅/ルビーグラデーション＋シャンパンゴールド縁取り）
+   */
+  private drawRedSeven(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+    ctx.save();
+    ctx.translate(x, y);
+
+    const hw = w * 0.5;
+    const hh = h * 0.5;
+
+    // 「7」のパス
+    ctx.beginPath();
+    ctx.moveTo(-hw * 0.75, -hh * 0.75);
+    ctx.lineTo(hw * 0.75, -hh * 0.75);
+    ctx.lineTo(0, hh * 0.78);
+    ctx.lineTo(-hw * 0.28, hh * 0.78);
+    ctx.lineTo(hw * 0.32, -hh * 0.35);
+    ctx.lineTo(-hw * 0.75, -hh * 0.35);
+    ctx.closePath();
+
+    // ルビーレッドグラデーション
+    const redGrad = ctx.createLinearGradient(0, -hh, 0, hh);
+    redGrad.addColorStop(0, '#f43f5e'); // ローズレッド
+    redGrad.addColorStop(0.45, '#e11d48'); // クリムゾン
+    redGrad.addColorStop(1, '#9f1239'); // ディープルビー
+    ctx.fillStyle = redGrad;
+    ctx.fill();
+
+    // シャンパンゴールドの枠線
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 1.6;
+    ctx.lineJoin = 'miter';
+    ctx.stroke();
+
+    // ハイライト芯線
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-hw * 0.65, -hh * 0.6);
+    ctx.lineTo(hw * 0.65, -hh * 0.6);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /**
+   * HOTポケットの炎オーラ＆バッジ描画
+   */
+  private drawHotPocketAura(ctx: CanvasRenderingContext2D, pk: PocketSlot): void {
+    const pw = pk.x2 - pk.x1;
+    const gateX = pk.x1 + 5;
+    const gateY = POCKET_ENTRY_Y + 8;
+    const gateW = pw - 10;
+    const gateH = POCKET_EXIT_Y - POCKET_ENTRY_Y - 12;
+
+    const isWarning = this.hotPocketTimer <= 1.0;
+    const blinkAlpha = isWarning ? (Math.sin(this.totalPlayTimeSec * 20) > 0 ? 0.3 : 1.0) : 1.0;
+
+    ctx.save();
+    ctx.globalAlpha = blinkAlpha;
+
+    // 燃え盛る金色の炎オーラグロウ
+    ctx.shadowColor = '#f59e0b';
+    ctx.shadowBlur = 16;
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 3.0;
+    ctx.beginPath();
+    ctx.roundRect(gateX - 1, gateY - 1, gateW + 2, gateH + 2, 9);
+    ctx.stroke();
+
+    // 内側炎グラデーション
+    const flameGrad = ctx.createLinearGradient(gateX, gateY + gateH, gateX, gateY);
+    flameGrad.addColorStop(0, 'rgba(245, 158, 11, 0.45)');
+    flameGrad.addColorStop(0.6, 'rgba(239, 68, 68, 0.25)');
+    flameGrad.addColorStop(1, 'rgba(254, 240, 138, 0.15)');
+    ctx.fillStyle = flameGrad;
+    ctx.beginPath();
+    ctx.roundRect(gateX, gateY, gateW, gateH, 8);
+    ctx.fill();
+
+    // HOT バッジ（ゲート上部中央）
+    const badgeX = pk.x1 + pw * 0.5;
+    const badgeY = gateY - 10;
+    const bw = 32;
+    const bh = 14;
+
+    ctx.shadowColor = '#ef4444';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath();
+    ctx.roundRect(badgeX - bw * 0.5, badgeY - bh * 0.5, bw, bh, 4);
+    ctx.fill();
+
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('HOT', badgeX, badgeY);
+
+    ctx.restore();
   }
 
   private drawPins(ctx: CanvasRenderingContext2D): void {
@@ -5387,21 +6045,32 @@ export class MedalGame {
         ctx.stroke();
         ctx.restore();
       } else if (canBuy) {
-        // 強化・取得可能：外枠のみサクラピンク発光＆微パルスで強調（内側は濃色にしてアイコン視認性を保持）
-        const pulse = Math.sin(this.totalPlayTimeSec * 4) * 1.0;
+        // 強化・取得可能：パターンB（高輝度グロウ太枠＋ホワイトピンク芯＋外周ネオンハロー）
         ctx.save();
-        ctx.shadowColor = '#f472b6';
-        ctx.shadowBlur = 10;
-        ctx.strokeStyle = '#f472b6';
-        ctx.lineWidth = 1.8;
+        const halo = ctx.createRadialGradient(node.gx, node.gy, r * 0.65, node.gx, node.gy, r + 12);
+        halo.addColorStop(0, 'rgba(236, 72, 153, 0.65)');
+        halo.addColorStop(0.55, 'rgba(244, 114, 182, 0.32)');
+        halo.addColorStop(1, 'transparent');
+        ctx.fillStyle = halo;
         ctx.beginPath();
-        ctx.arc(node.gx, node.gy, r + 1.5, 0, Math.PI * 2);
+        ctx.arc(node.gx, node.gy, r + 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 太く力強いソリッドネオンピンク枠
+        ctx.shadowColor = '#ec4899';
+        ctx.shadowBlur = 20;
+        ctx.strokeStyle = '#f472b6';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(node.gx, node.gy, r + 1.9, 0, Math.PI * 2);
         ctx.stroke();
 
-        ctx.strokeStyle = 'rgba(244, 114, 182, 0.45)';
-        ctx.lineWidth = 1.0;
+        // 内縁のシャープなホワイトピンク芯
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#fdf2f8';
+        ctx.lineWidth = 1.1;
         ctx.beginPath();
-        ctx.arc(node.gx, node.gy, r + 2.8 + pulse, 0, Math.PI * 2);
+        ctx.arc(node.gx, node.gy, r + 0.8, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       } else if (lv > 0) {
@@ -5683,6 +6352,8 @@ export class MedalGame {
     const nowMax = newLv >= node.maxLevel;
     const milestoneIds = new Set([
       'm2_2',
+      'hot_slot',
+      'r3_0',
       'star_1',
       'star_4',
       'star_0',

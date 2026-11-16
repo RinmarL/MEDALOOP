@@ -1174,18 +1174,142 @@ html, body {
   color: #67e8f9;
 }
 
+/* リザルト画面アクションボタン：ホーム画面（案B-1）と枠線・太さ・クリスタル仕様を完全統一 */
+.result-card .neon-btn {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .result-actions-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
-.result-action-btn .crystal-btn-inner {
-  padding: 9px 8px;
+.result-action-btn.play-btn {
+  box-shadow:
+    0 6px 16px rgba(2, 6, 23, 0.78),
+    0 0 18px rgba(103, 232, 249, 0.45);
+}
+
+.result-action-btn.play-btn .crystal-btn-inner {
+  padding: 10px 8px;
+  background:
+    radial-gradient(circle at 22% 32%, rgba(255, 255, 255, 0.92) 0.9px, transparent 1.5px),
+    radial-gradient(circle at 74% 38%, rgba(255, 255, 255, 0.85) 0.8px, transparent 1.4px),
+    radial-gradient(circle at 60% 72%, rgba(255, 255, 255, 0.8) 0.8px, transparent 1.3px),
+    radial-gradient(circle at 36% 68%, rgba(255, 255, 255, 0.72) 0.6px, transparent 1.1px),
+    linear-gradient(172deg, #bdeeff 0%, #74d3fb 34%, #46bcf4 74%, #6fe5fc 100%);
+  border: 1.8px solid rgba(224, 248, 255, 0.92);
+  box-shadow:
+    inset 0 2px 5px rgba(255, 255, 255, 0.85),
+    inset 0 -5px 12px rgba(7, 89, 133, 0.48);
+}
+
+.result-action-btn.tree-btn {
+  box-shadow:
+    0 6px 16px rgba(2, 6, 23, 0.78),
+    0 0 18px rgba(244, 114, 182, 0.42);
+}
+
+.result-action-btn.tree-btn .crystal-btn-inner {
+  padding: 10px 8px;
+  background:
+    radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.92) 0.8px, transparent 1.4px),
+    radial-gradient(circle at 78% 42%, rgba(255, 255, 255, 0.82) 0.8px, transparent 1.3px),
+    radial-gradient(circle at 48% 72%, rgba(255, 255, 255, 0.75) 0.7px, transparent 1.2px),
+    radial-gradient(circle at 22% 58%, rgba(236, 72, 153, 0.68) 0%, transparent 56%),
+    radial-gradient(circle at 80% 56%, rgba(125, 211, 252, 0.68) 0%, transparent 56%),
+    linear-gradient(135deg, #f9c6e2 0%, #f08cc1 36%, #cfb8f6 70%, #99dcfe 100%);
+  border: 1.8px solid rgba(255, 242, 250, 0.92);
+  box-shadow:
+    inset 0 2px 5px rgba(255, 255, 255, 0.85),
+    inset 0 -5px 12px rgba(157, 23, 77, 0.38);
+}
+
+.result-card .crystal-btn-gloss {
+  position: absolute;
+  top: 2px;
+  left: 14%;
+  right: 14%;
+  height: 30%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.02) 100%);
+  pointer-events: none;
 }
 
 .result-action-btn .btn-main-text {
-  font-size: 17px;
+  font-family: 'Noto Sans JP', 'Zen Maru Gothic', sans-serif;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.result-action-btn.play-btn .btn-main-text {
+  color: #ffffff;
+  text-shadow:
+    0 1.5px 4px rgba(7, 89, 133, 0.72),
+    0 0 8px rgba(14, 165, 233, 0.45);
+}
+
+.result-action-btn.tree-btn .btn-main-text {
+  color: #ffffff;
+  text-shadow:
+    0 1.5px 4px rgba(131, 24, 67, 0.68),
+    0 0 8px rgba(190, 24, 93, 0.38);
+}
+
+/* リザルト画面：「ホームへ戻る」ボタン（枠線1.8px・同系列ダーククリスタル質感） */
+.neon-btn.result-home-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 0;
+  background: transparent;
+  box-shadow:
+    0 5px 14px rgba(2, 6, 23, 0.75),
+    0 0 14px rgba(148, 163, 184, 0.22);
+}
+
+.result-home-btn .crystal-btn-inner {
+  padding: 9px 8px;
+  background: linear-gradient(180deg, #334155 0%, #1e293b 55%, #0f172a 100%);
+  border: 1.8px solid rgba(148, 163, 184, 0.75);
+  box-shadow:
+    inset 0 1.5px 3px rgba(255, 255, 255, 0.35),
+    inset 0 -2.5px 6px rgba(2, 6, 23, 0.8);
+}
+
+.result-home-btn .crystal-btn-gloss {
+  display: none;
+}
+
+.result-home-btn .btn-main-text.home-return-text {
+  font-family: 'Noto Sans JP', 'Zen Maru Gothic', sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #e2e8f0;
+  text-shadow:
+    0 1.5px 3px rgba(2, 6, 23, 0.9),
+    0 0 6px rgba(148, 163, 184, 0.3);
+}
+
+.result-home-btn:hover .crystal-btn-inner {
+  border-color: rgba(226, 232, 240, 0.95);
+  box-shadow:
+    inset 0 1.5px 4px rgba(255, 255, 255, 0.5),
+    inset 0 -2.5px 6px rgba(2, 6, 23, 0.8),
+    0 0 10px rgba(203, 213, 225, 0.4);
+}
+
+.result-home-btn:hover .home-return-text {
+  color: #ffffff;
+}
+
+.result-home-btn:active,
+.result-action-btn:active {
+  transform: scale(0.97);
 }
 
 /* ③ スキルツリーオーバーレイ */
@@ -1945,8 +2069,9 @@ html, body {
     inset 0 -4px 10px rgba(2, 6, 23, 0.78);
 }
 
+.neon-btn.rune-btn .crystal-btn-gloss,
 .b1-frame-card .neon-btn.rune-btn.is-locked .crystal-btn-gloss {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.02) 100%);
+  display: none;
 }
 
 .neon-btn.rune-btn.is-locked .rune-btn-lock-svg {
@@ -2395,7 +2520,7 @@ html, body {
 }
 
 .close-rune-btn .crystal-btn-gloss {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.03) 100%);
+  display: none;
 }
 
 .close-rune-text {

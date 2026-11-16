@@ -30,7 +30,8 @@ export interface MedalEntity {
   splitCooldown?: number; // スプリットライン連続分裂防止クールダウン
   warpCooldown?: number; // ワープ直後の連続再突入防止クールダウン
   warpTrailTimer?: number; // ワープ射出直後のネオントレイル強調タイマー
-  prismCooldown?: number; // プリズム連続ヒット防止クールダウン
+  lastPrismHitId?: number; // 最後に当たったプリズムID
+  prismCooldown?: number; // 同一プリズム連続ヒット防止クールダウン
   boardElapsedSec: number; // 盤面投入後の経過秒数（ケンタウルス高速入賞判定用）
   pinBounceCount: number; // ピン・バンパー新規衝突回数（ペガサス加算用）
   stuckSec: number; // 盤面同一箇所での滞留累積秒数（スタック脱出安全弁用）
@@ -92,6 +93,7 @@ export interface CyberCatapult {
 }
 
 export interface PrismTarget {
+  id: number;
   x: number;
   y: number;
   radius: number;
@@ -530,7 +532,9 @@ export interface ComputedStats {
   jpNormalMedalRate: number; // JP時の通常メダル確率（初期0.80、強化で0.70→0.60→0.50）
   jpFeverUnlocked: boolean; // JPフィーバー（3秒間全メダル得点2倍）
   jpFreezeUnlocked: boolean; // JPロングフリーズ（2%で4.4秒演出＆100枚一斉投下）
-  prismTargetUnlocked: boolean; // プリズム・ターゲット（破壊型結晶ギミック）有効化
+  prismTargetUnlocked: boolean; // プリズム有効化 (prismTargetCount > 0)
+  prismTargetCount: number; // プリズム同時出現数 (0:未解放, 1:1個, 2:2個)
+  hotSlotUnlocked: boolean; // ホットスロット有効化（HOTポケット＆簡易スロット）
   engravingUnlocked: boolean; // 刻印開放（ホーム「刻印」解放＆初期3刻印有効化）
   engravingMidUnlocked: boolean; // 中級刻印開放（中級刻印3種解禁）
   engravingSlot2Unlocked: boolean; // スロット2枠目開放（最大2種同時装備）
@@ -538,3 +542,5 @@ export interface ComputedStats {
   runeCometActive?: boolean; // コメット刻印有効化（通常メダル反発-15% ＆ 落下速度+15%）
   runeCentaurusActive?: boolean; // ケンタウルス刻印有効化（通常メダル落下速度+20% ＆ 2秒以内入賞+40%）
 }
+
+export type SlotSymbol = 'miss' | 'bell' | 'auto' | 'clock' | 'dia' | '7';

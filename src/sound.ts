@@ -186,8 +186,15 @@ class SoundManager {
     const ctx = this.ensureContext();
     if (!ctx) return;
     const now = ctx.currentTime;
-    // 結晶ヒット音：残りHPが減るほどピッチが上がり割れそうな緊張感を演出
-    const baseFreq = hpRemaining <= 1 ? 1560 : hpRemaining === 2 ? 1280 : 1040;
+    // 結晶ヒット音：残りHP（4→3→2→1）が減るほどピッチが上がり割れそうな緊張感を演出
+    const baseFreq =
+      hpRemaining <= 1
+        ? 1620
+        : hpRemaining === 2
+        ? 1360
+        : hpRemaining === 3
+        ? 1160
+        : 980;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'triangle';
@@ -757,6 +764,146 @@ class SoundManager {
       osc.start(t);
       osc.stop(t + 0.15);
     });
+  }
+
+  /**
+   * スロット始動音（軽快な電子アルペジオ）
+   */
+  public playSlotSpin(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    const freqs = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+    freqs.forEach((f, i) => {
+      const t = now + i * 0.035;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f, t);
+      gain.gain.setValueAtTime(0.07, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.09);
+    });
+  }
+
+  /**
+   * スロットリール停止音（カチッとしたソリッド音／リーチ時は高音）
+   */
+  public playSlotReelStop(isReach: boolean = false): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = isReach ? 'sine' : 'triangle';
+    const startF = isReach ? 1318.51 : 587.33; // E6 (リーチ高音) or D5
+    const endF = isReach ? 1760.0 : 220.0;
+    osc.frequency.setValueAtTime(startF, now);
+    osc.frequency.exponentialRampToValueAtTime(endF, now + (isReach ? 0.14 : 0.05));
+
+    gain.gain.setValueAtTime(isReach ? 0.14 : 0.11, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + (isReach ? 0.16 : 0.06));
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + (isReach ? 0.17 : 0.07));
+  }
+
+  /**
+   * スロット当選ファンファーレ・SE
+   */
+  public playSlotWin(symbol: '7' | 'dia' | 'clock' | 'bell' | 'auto'): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+
+    if (symbol === '7') {
+      // 赤7大当たり：豪華なファンファーレ（ド・ミ・ソ・ド・ミ・ソ！）
+      const melody = [
+        { f: 523.25, dt: 0.0, d: 0.12 },
+        { f: 659.25, dt: 0.12, d: 0.12 },
+        { f: 783.99, dt: 0.24, d: 0.12 },
+        { f: 1046.5, dt: 0.36, d: 0.28 },
+        { f: 1318.51, dt: 0.50, d: 0.45 },
+      ];
+      melody.forEach(({ f, dt, d }) => {
+        const t = now + dt;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, t);
+        gain.gain.setValueAtTime(0.18, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + d);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + d + 0.02);
+      });
+    } else if (symbol === 'bell') {
+      // ベル：澄んだチャイム音
+      [880, 1174.66].forEach((f, i) => {
+        const t = now + i * 0.08;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, t);
+        gain.gain.setValueAtTime(0.14, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.32);
+      });
+    } else if (symbol === 'clock') {
+      // 時計：神秘的なタイムベル
+      [659.25, 987.77, 1318.51].forEach((f, i) => {
+        const t = now + i * 0.06;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, t);
+        gain.gain.setValueAtTime(0.12, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.36);
+      });
+    } else if (symbol === 'dia') {
+      // ダイヤ：高音クリスタルアセンション
+      [783.99, 1046.5, 1567.98].forEach((f, i) => {
+        const t = now + i * 0.05;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, t);
+        gain.gain.setValueAtTime(0.13, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.3);
+      });
+    } else {
+      // オート（マグネット）：電子チャージ音
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.22);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.26);
+    }
   }
 }
 

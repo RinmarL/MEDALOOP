@@ -64,7 +64,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     maxLevel: 3,
     baseCost: 25,
     costScale: 1.7,
-    neighbors: ['r1_0', 'r2_0', 'm2_5'],
+    neighbors: ['r1_0', 'hot_slot', 'm2_5'],
     category: 'stat',
     icon: '⏱',
   },
@@ -255,40 +255,40 @@ export const SKILL_NODES: SkillNodeDef[] = [
 
   // === 右上セクター（第2円: -54°, -18°） ===
   {
-    id: 'r2_0',
-    name: 'スプリットライン I',
-    description: '盤面に分裂ライン出現（メダル通過で分裂、最大3回で消滅）',
+    id: 'hot_slot',
+    name: 'ホットスロット',
+    description: '光るHOTポケットにメダルが入賞するとスロットが始動（最大4保留）',
     ...polar(ORBIT_R2, -54),
     maxLevel: 1,
     baseCost: 750,
     costScale: 1,
-    neighbors: ['r1_1', 'star_1'],
+    neighbors: ['r1_1', 'r3_0'],
     category: 'milestone',
-    icon: '⚡',
+    icon: '🎰',
   },
   {
-    id: 'star_1',
-    name: 'ワープホール',
-    description: '下部ワープホールから上空ゲートへ高速クロス射出（通過で倍率+0.5＆25%複製）',
+    id: 'r3_0',
+    name: 'スプリットライン',
+    description: '盤面に通過メダルが2枚に分裂するラインが出現（Lv1: 1本、Lv2: 2本）',
     ...polar(ORBIT_R3, -38.6),
-    maxLevel: 1,
-    baseCost: 6200,
-    costScale: 1,
-    neighbors: ['r2_0', 'outer_0'],
+    maxLevel: 2,
+    baseCost: 3200,
+    costScale: 2.5,
+    neighbors: ['hot_slot', 'outer_0'],
     category: 'milestone',
-    icon: '🌀',
+    icon: '⚡',
   },
   {
     id: 'outer_0',
-    name: 'スプリットライン II',
-    description: 'スプリットラインの出現本数 1本→2本',
+    name: 'ワープホール',
+    description: '下部ワープホールから上空ゲートへ高速クロス射出（通過で倍率+0.5＆25%複製）',
     ...polar(ORBIT_R4, -50),
     maxLevel: 1,
-    baseCost: 56000,
+    baseCost: 18000,
     costScale: 1,
-    neighbors: ['star_1'],
+    neighbors: ['r3_0'],
     category: 'milestone',
-    icon: '⚡',
+    icon: '🌀',
   },
   // === 右上セクター（第2円: -18°：投下特化ライン） ===
   {
@@ -416,11 +416,11 @@ export const SKILL_NODES: SkillNodeDef[] = [
   {
     id: 'prism_target',
     name: 'プリズム',
-    description: '盤面に破壊可能な結晶が出現（3回当てると破壊、ボーナスPT＆追加メダル2枚放出）',
+    description: '盤面に破壊可能な結晶が出現（Lv1:1個 / Lv2:同時2個。5回当てると破壊＆2枚放出）',
     ...polar(ORBIT_R4, 50),
-    maxLevel: 1,
+    maxLevel: 2,
     baseCost: 4200,
-    costScale: 1,
+    costScale: 2,
     neighbors: ['r2_4'],
     category: 'milestone',
     icon: '💠',
@@ -742,13 +742,15 @@ export class SkillTreeState {
     if (lv('m2_2') >= 1) pinLayoutTier = 3;
     if (lv('outer_5') >= 1) pinLayoutTier = 4;
 
-    // スプリットライン (r2_0: 1本, outer_0: 2本)
+    // スプリットライン (r3_0: Lv1で1本, Lv2で2本)
     let splitLaserCount = 0;
-    if (lv('r2_0') > 0) splitLaserCount = 1;
-    if (lv('outer_0') > 0) splitLaserCount = 2;
+    if (lv('r3_0') >= 1) splitLaserCount = lv('r3_0');
 
-    // サイバー・カタパルト（最上部ループ打ち上げ）
-    const catapultUnlocked = lv('star_1') > 0;
+    // サイバー・カタパルト（最上部ループ打ち上げ：第4円 outer_0）
+    const catapultUnlocked = lv('outer_0') > 0;
+
+    // ホットスロット（第2円 hot_slot）
+    const hotSlotUnlocked = lv('hot_slot') > 0;
 
     // 周期ストッパー（廃止・後方互換）
     const stopperCount = 0;
@@ -849,6 +851,8 @@ export class SkillTreeState {
       jpFeverUnlocked: lv('jp_fever') > 0,
       jpFreezeUnlocked: lv('jp_freeze') > 0,
       prismTargetUnlocked: lv('prism_target') > 0,
+      prismTargetCount: lv('prism_target'),
+      hotSlotUnlocked,
       engravingUnlocked,
       engravingMidUnlocked,
       engravingSlot2Unlocked,
@@ -972,13 +976,16 @@ export function getNodeEffectPreview(state: SkillTreeState, node: SkillNodeDef):
   if (a.splitLaserCount !== b.splitLaserCount) {
     push('スプリットライン', `${a.splitLaserCount}本`, `${b.splitLaserCount}本`);
   }
+  if (a.prismTargetCount !== b.prismTargetCount) {
+    push('プリズム出現数', `${a.prismTargetCount}個`, `${b.prismTargetCount}個`);
+  }
 
   const unlockFlags: Array<[keyof ComputedStats, string, string]> = [
+    ['hotSlotUnlocked', 'hot_slot', 'ホットスロット'],
     ['holdDropUnlocked', 'm2_5', '長押し連続投下'],
     ['swipePickupUnlocked', 'm2_0', '連続回収（なぞり）'],
     ['holdReloadUnlocked', 'm2_3', '長押し連続装填'],
-    ['catapultUnlocked', 'star_1', 'ワープホール'],
-    ['prismTargetUnlocked', 'prism_target', 'プリズム'],
+    ['catapultUnlocked', 'outer_0', 'ワープホール'],
     ['jpFeverUnlocked', 'jp_fever', 'JPフィーバー'],
     ['jpFreezeUnlocked', 'jp_freeze', 'JPロングフリーズ'],
     ['engravingUnlocked', 'engraving_unlock', '刻印'],

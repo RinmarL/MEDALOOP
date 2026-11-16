@@ -77,21 +77,21 @@ export interface PhysicsCallbacks {
 }
 
 const LUCKY_RING_SPOTS = [
-  { x: 105, y: 230 }, // 上部左
-  { x: 355, y: 230 }, // 上部右
-  { x: 230, y: 195 }, // バンパー真上中央
-  { x: 135, y: 330 }, // バンパー左下横
-  { x: 325, y: 330 }, // バンパー右下横
-  { x: 230, y: 415 }, // 下中央
+  { x: 230, y: 222 }, // バンパー上部中央広間（見た目外周r=22で全ピン・バンパーと+22px以上離隔）
+  { x: 145, y: 325 }, // バンパー左下広間
+  { x: 315, y: 325 }, // バンパー右下広間
+  { x: 188, y: 382 }, // 下段中央左広間
+  { x: 272, y: 382 }, // 下段中央右広間
+  { x: 230, y: 458 }, // 最下段中央手前（キーストーンピン下）
 ];
 
 const PRISM_TARGET_SPOTS = [
-  { x: 150, y: 320 }, // 中段左広間（バンパー・ピン隙間35px）
-  { x: 310, y: 320 }, // 中段右広間（バンパー・ピン隙間35px）
+  { x: 150, y: 320 }, // 中段左広間（バンパー・ピン隙間34.9px）
+  { x: 310, y: 320 }, // 中段右広間（バンパー・ピン隙間34.9px）
   { x: 230, y: 266 }, // 3連バンパー中央三角内
-  { x: 146, y: 412 }, // 下段左中寄り
-  { x: 314, y: 412 }, // 下段右中寄り
-  { x: 230, y: 124 }, // 上空ゲート間中央
+  { x: 148, y: 418 }, // 下段左中寄り
+  { x: 312, y: 418 }, // 下段右中寄り
+  { x: 230, y: 458 }, // 最下段中央手前（バンパー＆キーストーンピン下）
 ];
 
 /** 点 (px, py) と線分 (x1, y1)-(x2, y2) の最短距離 */
@@ -159,7 +159,7 @@ export class PhysicsWorld {
   public guideRails: GuideRail[] = [];
   public luckyRing: LuckyRing = {
     x: 230,
-    y: 195,
+    y: 222,
     radius: 17, // リングと同じ外径サイズ感（コアr=16.5, 公転リング込みで最大r=22）
     kind: 'mult',
     active: false,
@@ -169,18 +169,7 @@ export class PhysicsWorld {
     pulsePhase: 0,
     lastSpotIndex: -1,
   };
-  public prismTarget: PrismTarget = {
-    x: 230,
-    y: 266,
-    radius: 16,
-    hp: 3,
-    maxHp: 3,
-    active: false,
-    respawnTimer: 0,
-    rotAngle: 0,
-    hitAnim: 0,
-    lastSpotIndex: -1,
-  };
+  public prismTargets: PrismTarget[] = [];
   private nextMedalId: number = 1;
   private accumulator: number = 0;
   private stepCount: number = 0;
@@ -247,10 +236,11 @@ export class PhysicsWorld {
           (this.luckyRing.radius + 14);
         if (slack < minSoftSlack) minSoftSlack = slack;
       }
-      if (this.prismTarget.active) {
+      for (const prism of this.prismTargets) {
+        if (!prism.active) continue;
         const slack =
-          distPointToSegment(this.prismTarget.x, this.prismTarget.y, ex1, ey1, ex2, ey2) -
-          (this.prismTarget.radius + 14);
+          distPointToSegment(prism.x, prism.y, ex1, ey1, ex2, ey2) -
+          (prism.radius + 14);
         if (slack < minSoftSlack) minSoftSlack = slack;
       }
 
@@ -413,11 +403,27 @@ export class PhysicsWorld {
       );
     }
 
-    // ラッキーリング＆プリズムターゲットを先に配置し、スプリットライン生成時にも重複回避できるようにする
+    // ラッキーリング＆プリズムを先に配置し、スプリットライン生成時にも重複回避できるようにする
     this.lastStats = stats;
-    this.prismTarget.lastSpotIndex = -1;
+    this.prismTargets = [];
+    for (let i = 0; i < stats.prismTargetCount; i++) {
+      const prism: PrismTarget = {
+        id: i + 1,
+        x: 230,
+        y: 266,
+        radius: 16,
+        hp: 5,
+        maxHp: 5,
+        active: false,
+        respawnTimer: 0,
+        rotAngle: i * 0.85,
+        hitAnim: 0,
+        lastSpotIndex: -1,
+      };
+      this.prismTargets.push(prism);
+      this.relocatePrismTarget(prism, stats);
+    }
     this.relocateLuckyRing(stats);
-    this.relocatePrismTarget(stats);
 
     // 4. スプリットライン（長さ約52px、最大3回通過または5秒で消滅→3秒クールダウン、通過でメダル分裂）
     if (stats.splitLaserCount >= 1) {
@@ -484,7 +490,7 @@ export class PhysicsWorld {
     spots: readonly { x: number; y: number }[],
     lastSpotIndex: number,
     minClearPad: number,
-    extraAvoid?: { x: number; y: number; active: boolean }
+    avoidTargets?: Array<{ x: number; y: number; active: boolean }>
   ): number {
     const otherSpots = spots.map((_, i) => i).filter((i) => i !== lastSpotIndex);
     const nonLastSpots = otherSpots.length > 0 ? otherSpots : [0];
@@ -493,10 +499,22 @@ export class PhysicsWorld {
       const laserClear = this.splitLasers.every(
         (laser) => !laser.active || distPointToSegment(s.x, s.y, laser.x1, laser.y1, laser.x2, laser.y2) >= minClearPad
       );
-      const extraClear = !extraAvoid || !extraAvoid.active || Math.hypot(s.x - extraAvoid.x, s.y - extraAvoid.y) >= minClearPad + 10;
-      return laserClear && extraClear;
+      const targetsClear = !avoidTargets || avoidTargets.every(
+        (t) => !t.active || Math.hypot(s.x - t.x, s.y - t.y) >= minClearPad + 24
+      );
+      return laserClear && targetsClear;
     });
-    const pool = clearSpots.length > 0 ? clearSpots : nonLastSpots;
+    if (clearSpots.length > 0) {
+      return clearSpots[Math.floor(Math.random() * clearSpots.length)];
+    }
+    // レーザーと重なる候補しかない場合でも、他のアクティブギミックとは重複しないスポットを優先
+    const nonAvoidOverlap = nonLastSpots.filter((idx) => {
+      const s = spots[idx];
+      return !avoidTargets || avoidTargets.every(
+        (t) => !t.active || Math.hypot(s.x - t.x, s.y - t.y) >= minClearPad + 24
+      );
+    });
+    const pool = nonAvoidOverlap.length > 0 ? nonAvoidOverlap : nonLastSpots;
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
@@ -512,7 +530,7 @@ export class PhysicsWorld {
       LUCKY_RING_SPOTS,
       this.luckyRing.lastSpotIndex,
       this.luckyRing.radius + 14,
-      this.prismTarget
+      this.prismTargets
     );
     this.luckyRing.lastSpotIndex = spotIdx;
     const spot = LUCKY_RING_SPOTS[spotIdx];
@@ -532,28 +550,33 @@ export class PhysicsWorld {
     this.luckyRing.respawnTimer = 0;
   }
 
-  private relocatePrismTarget(stats?: ComputedStats): void {
+  private relocatePrismTarget(prism: PrismTarget, stats?: ComputedStats): void {
     const curStats = stats || this.lastStats;
-    if (!curStats || !curStats.prismTargetUnlocked) {
-      this.prismTarget.active = false;
-      this.prismTarget.respawnTimer = 999;
+    if (!curStats || curStats.prismTargetCount <= 0) {
+      prism.active = false;
+      prism.respawnTimer = 999;
       return;
+    }
+
+    const avoidList: Array<{ x: number; y: number; active: boolean }> = [this.luckyRing];
+    for (const other of this.prismTargets) {
+      if (other !== prism) avoidList.push(other);
     }
 
     const spotIdx = this.pickClearSpot(
       PRISM_TARGET_SPOTS,
-      this.prismTarget.lastSpotIndex,
-      this.prismTarget.radius + 14,
-      this.luckyRing
+      prism.lastSpotIndex,
+      prism.radius + 14,
+      avoidList
     );
-    this.prismTarget.lastSpotIndex = spotIdx;
+    prism.lastSpotIndex = spotIdx;
     const spot = PRISM_TARGET_SPOTS[spotIdx];
-    this.prismTarget.x = spot.x;
-    this.prismTarget.y = spot.y;
-    this.prismTarget.hp = this.prismTarget.maxHp;
-    this.prismTarget.active = true;
-    this.prismTarget.respawnTimer = 0;
-    this.prismTarget.hitAnim = 0;
+    prism.x = spot.x;
+    prism.y = spot.y;
+    prism.hp = prism.maxHp;
+    prism.active = true;
+    prism.respawnTimer = 0;
+    prism.hitAnim = 0;
   }
 
   public spawnInitialTrayMedals(types: MedalType[]): void {
@@ -687,20 +710,22 @@ export class PhysicsWorld {
       }
     }
 
-    // プリズム・ターゲットの回転＆ヒット演出減衰＆破壊後リスポーン管理
-    if (stats.prismTargetUnlocked) {
-      this.prismTarget.rotAngle += clampedDelta * 1.4;
-      if (this.prismTarget.hitAnim > 0) {
-        this.prismTarget.hitAnim = Math.max(0, this.prismTarget.hitAnim - clampedDelta * 4.5);
-      }
-      if (!this.prismTarget.active) {
-        this.prismTarget.respawnTimer -= clampedDelta;
-        if (this.prismTarget.respawnTimer <= 0) {
-          this.relocatePrismTarget(stats);
+    // プリズムの回転＆ヒット演出減衰＆破壊後リスポーン管理（複数同時出現対応）
+    for (const prism of this.prismTargets) {
+      if (stats.prismTargetCount > 0) {
+        prism.rotAngle += clampedDelta * 1.4;
+        if (prism.hitAnim > 0) {
+          prism.hitAnim = Math.max(0, prism.hitAnim - clampedDelta * 4.5);
         }
+        if (!prism.active) {
+          prism.respawnTimer -= clampedDelta;
+          if (prism.respawnTimer <= 0) {
+            this.relocatePrismTarget(prism, stats);
+          }
+        }
+      } else {
+        prism.active = false;
       }
-    } else {
-      this.prismTarget.active = false;
     }
 
     while (this.accumulator >= DT) {
@@ -1333,48 +1358,104 @@ export class PhysicsWorld {
       }
     }
 
-    // プリズム・ターゲット（破壊型ネオン結晶：3ヒット破壊で2枚追加放出）
-    if (m.zone === 'board' && this.prismTarget.active && (!m.prismCooldown || m.prismCooldown <= 0)) {
-      const prism = this.prismTarget;
-      const pdx = m.x - prism.x;
-      const pdy = m.y - prism.y;
-      const pdist = Math.hypot(pdx, pdy);
-      if (pdist <= MEDAL_RADIUS + prism.radius) {
-        const nx = pdist > 0.001 ? pdx / pdist : (m.id % 2 === 0 ? 1 : -1);
-        const ny = pdist > 0.001 ? pdy / pdist : -1;
-        // 強制位置押し出しは行わず、速度インパルスのみで軽く弾いてスタックを防止
-        const approach = m.vx * nx + m.vy * ny;
-        if (approach < 0) {
-          m.vx -= 1.55 * approach * nx;
-          m.vy -= 1.55 * approach * ny;
+    // プリズム（破壊型ネオン結晶：ピン並みの反発＆接触倍率加算＋5ヒット破壊で2枚追加放出・3秒リスポーン）
+    if (m.zone === 'board') {
+      for (let i = 0; i < this.prismTargets.length; i++) {
+        const prism = this.prismTargets[i];
+        if (!prism.active) continue;
+
+        const pdx = m.x - prism.x;
+        const pdy = m.y - prism.y;
+        const minDist = MEDAL_RADIUS + prism.radius;
+        const distSq = pdx * pdx + pdy * pdy;
+        if (distSq >= minDist * minDist) continue;
+
+        const dist = Math.sqrt(distSq) || 0.001;
+        const nx = pdx / dist;
+        const ny = pdy / dist;
+        const overlap = minDist - dist;
+        m.x += nx * overlap;
+        m.y += ny * overlap;
+
+        // 頭頂付近での静止防止（通常ピンと同一仕様）
+        if (ny < -0.78 && Math.hypot(m.vx, m.vy) < 120) {
+          const rollSign = Math.abs(nx) > 0.02 ? Math.sign(nx) : (m.id % 2 === 0 ? 1 : -1);
+          m.vx += rollSign * 160 * DT * 60;
         }
-        m.vx += nx * 70;
-        m.vy = Math.min(m.vy, 120) + ny * 35;
 
-        m.prismCooldown = 0.22;
-        m.contactFlash = 0.75;
-        prism.hp = Math.max(0, prism.hp - 1);
-        prism.hitAnim = 1.0;
+        const tx = -ny;
+        const ty = nx;
+        const vn = m.vx * nx + m.vy * ny;
+        const vt = m.vx * tx + m.vy * ty;
 
-        if (prism.hp <= 0) {
-          prism.active = false;
-          prism.respawnTimer = 2.0;
+        if (vn < 0) {
+          const approach = -vn;
+          const pinCometMult = stats.runeCometActive && m.type === 'normal' ? 0.85 : 1.0;
+          let bounceRestitution = RESTITUTION * pinCometMult;
+          if (m.type === 'bounce') bounceRestitution = Math.min(1.35, bounceRestitution * 1.3);
 
-          let spawnedCount = 0;
-          const shardDirs = [-1, 1];
-          for (const dir of shardDirs) {
-            if (this.medals.length >= 60) break;
-            const spawned = this.spawnMedal(prism.x + dir * 10, prism.y - 4, m.type, 'board');
-            spawned.vx = dir * (110 + Math.random() * 35);
-            spawned.vy = -(105 + Math.random() * 30);
-            spawned.chargeMultiplier = Math.max(1.5, m.chargeMultiplier);
-            spawned.prismCooldown = 0.35;
-            spawned.contactFlash = 1.0;
-            spawnedCount++;
+          const newVn =
+            approach < CONTACT_NORMAL_THRESHOLD
+              ? 0
+              : approach * bounceRestitution;
+          let newVt =
+            vt * (approach < CONTACT_NORMAL_THRESHOLD ? TANGENT_CONTACT_RETENTION : TANGENT_COLLISION_RETENTION);
+
+          if (ny < -0.5 && Math.abs(nx) < 0.35) {
+            const slideDir =
+              Math.abs(nx) > 0.02
+                ? (nx > 0 ? 1 : -1)
+                : (m.vx !== 0 ? Math.sign(m.vx) : (m.id % 2 === 0 ? 1 : -1));
+            newVt += slideDir * 65;
+            m.vx += slideDir * 45;
+          } else if (Math.abs(nx) < 0.08 && Math.abs(newVt) < 15) {
+            newVt += (m.id % 2 === 0 ? 1 : -1) * 35;
           }
-          callbacks.onPrismBreak?.(m, prism, spawnedCount);
-        } else {
-          callbacks.onPrismHit?.(m, prism);
+
+          m.vx = newVn * nx + newVt * tx;
+          m.vy = newVn * ny + newVt * ty;
+
+          const isSamePrism = m.lastPrismHitId === prism.id;
+          if (!isSamePrism || !m.prismCooldown || m.prismCooldown <= 0) {
+            m.lastPrismHitId = prism.id;
+            m.prismCooldown = 0.40;
+            m.contactFlash = 0.75;
+
+            // ピン接触時と同じ接触倍率加算を適用
+            if (stats.contactMaxMultiplier > 1.0 && m.chargeMultiplier < stats.contactMaxMultiplier) {
+              const pGain = stats.pinChargeGain || 0.1;
+              m.chargeMultiplier = Math.min(
+                stats.contactMaxMultiplier,
+                +(m.chargeMultiplier + pGain).toFixed(2)
+              );
+              m.contactFlash = 0.5;
+            }
+
+            prism.hp = Math.max(0, prism.hp - 1);
+            prism.hitAnim = 1.0;
+
+            if (prism.hp <= 0) {
+              prism.active = false;
+              prism.respawnTimer = 3.0;
+
+              let spawnedCount = 0;
+              const shardDirs = [-1, 1];
+              for (const dir of shardDirs) {
+                if (this.medals.length >= 60) break;
+                const spawned = this.spawnMedal(prism.x + dir * 10, prism.y - 4, m.type, 'board');
+                spawned.vx = dir * (110 + Math.random() * 35);
+                spawned.vy = -(105 + Math.random() * 30);
+                spawned.chargeMultiplier = Math.max(1.5, m.chargeMultiplier);
+                spawned.lastPrismHitId = prism.id;
+                spawned.prismCooldown = 0.35;
+                spawned.contactFlash = 1.0;
+                spawnedCount++;
+              }
+              callbacks.onPrismBreak?.(m, prism, spawnedCount);
+            } else {
+              callbacks.onPrismHit?.(m, prism);
+            }
+          }
         }
       }
     }
