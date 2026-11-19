@@ -188,6 +188,52 @@ export interface WarpEffect {
   kind: 'implosion' | 'explosion' | 'arc'; // implosion: 吸い込み消滅, explosion: 出現拡散, arc: 入口→出口ワープビーム
 }
 
+/**
+ * スキルツリーノード用 天体SVGベクターアイコンID
+ * 新規ノード追加時は必ず既存の TreeIconId を指定するか、
+ * src/treeIcons.ts に同テイスト（24x24 単色・天体意匠）のSVGアイコンを追加すること。
+ */
+export type TreeIconId =
+  | 'hexagram'
+  | 'meteor_speed'
+  | 'hourglass'
+  | 'crystal'
+  | 'struggle_star'
+  | 'orbit_target'
+  | 'double_bound'
+  | 'gravity_crescent'
+  | 'comet_rush'
+  | 'bounce_star'
+  | 'solar_coin'
+  | 'plasma_orb'
+  | 'chrono_crown'
+  | 'frost_star'
+  | 'jp_star_reel'
+  | 'starfall_coins'
+  | 'supernova_flame'
+  | 'astral_slot'
+  | 'beam_split'
+  | 'galaxy_vortex'
+  | 'starfall_meteor'
+  | 'stream_down'
+  | 'boost_orb'
+  | 'pocket_mult'
+  | 'binary_orbs'
+  | 'star_prism'
+  | 'star_chain'
+  | 'star_storm'
+  | 'stream_up'
+  | 'star_stack'
+  | 'swift_orbit_up'
+  | 'astrolabe_gear'
+  | 'engraving_star'
+  | 'engraving_octa'
+  | 'engraving_twin'
+  | 'engraving_zodiac'
+  | 'gather_sweep'
+  | 'cluster_gather'
+  | 'swift_orbit_in';
+
 export interface SkillNodeDef {
   id: string;
   name: string;
@@ -199,7 +245,7 @@ export interface SkillNodeDef {
   costScale: number;
   neighbors: string[];
   category: 'core' | 'milestone' | 'stat' | 'medal';
-  icon: string;
+  icon: TreeIconId;
 }
 
 export type RuneId =
@@ -535,6 +581,8 @@ export interface ComputedStats {
   prismTargetUnlocked: boolean; // プリズム有効化 (prismTargetCount > 0)
   prismTargetCount: number; // プリズム同時出現数 (0:未解放, 1:1個, 2:2個)
   hotSlotUnlocked: boolean; // ホットスロット有効化（HOTポケット＆簡易スロット）
+  starfallUnlocked: boolean; // スターフォール有効化（盤面を横切る流星群＆ゴールド昇格）
+  autoReloadUnlocked: boolean; // 装填自動化（メダル回収と同時に投入口へ自動装填）
   engravingUnlocked: boolean; // 刻印開放（ホーム「刻印」解放＆初期3刻印有効化）
   engravingMidUnlocked: boolean; // 中級刻印開放（中級刻印3種解禁）
   engravingSlot2Unlocked: boolean; // スロット2枠目開放（最大2種同時装備）
@@ -544,3 +592,40 @@ export interface ComputedStats {
 }
 
 export type SlotSymbol = 'miss' | 'bell' | 'auto' | 'clock' | 'dia' | '7';
+
+export interface StarfallMeteor {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  tailLen: number;
+  width: number;
+  colorHead: string;
+  colorTail: string;
+  twinklePhase: number;
+  rotAngle: number;
+  sparkleAccum: number;
+  hitMedalIds: Set<number>;
+}
+
+export interface StarfallSparkle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  life: number;
+  maxLife: number;
+  color: string;
+  twinklePhase: number;
+  rot: number;
+  vRot: number;
+}
+
+export interface StarfallBurst {
+  x: number;
+  y: number;
+  progress: number; // 0 -> 1
+  maxR: number;
+  isBoost: boolean; // 既ゴールドの倍率UP時はさらに眩い白金リング
+}

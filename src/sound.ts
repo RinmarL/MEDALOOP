@@ -905,6 +905,53 @@ class SoundManager {
       osc.stop(now + 0.26);
     }
   }
+
+  /**
+   * スターフォール流星群到来SE（きらめく星屑アルペジオ）
+   */
+  public playStarfallAppear(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const freqs = [1567.98, 1975.53, 2349.32, 2637.02]; // G6, B6, D7, E7
+    freqs.forEach((f, i) => {
+      const t = now + i * 0.045;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.88, t + 0.22);
+      gain.gain.setValueAtTime(0.065, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.25);
+    });
+  }
+
+  /**
+   * スターフォール接触・ゴールド昇格SE（澄んだ黄金星屑チャイム）
+   */
+  public playStarfallHit(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [1046.5, 1567.98, 2093.0]; // C6, G6, C7
+    notes.forEach((f, i) => {
+      const t = now + i * 0.032;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, t);
+      gain.gain.setValueAtTime(0.095, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.28);
+    });
+  }
 }
 
 export const sound = new SoundManager();

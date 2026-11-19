@@ -728,9 +728,15 @@ export class PhysicsWorld {
       }
     }
 
-    while (this.accumulator >= DT) {
+    const maxSubsteps = 10;
+    let substeps = 0;
+    while (this.accumulator >= DT && substeps < maxSubsteps) {
       this.stepPhysics(stats, callbacks);
       this.accumulator -= DT;
+      substeps++;
+    }
+    if (this.accumulator >= DT) {
+      this.accumulator = 0;
     }
   }
 

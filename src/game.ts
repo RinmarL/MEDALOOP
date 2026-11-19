@@ -13,6 +13,8 @@ import {
   TRAY_BOTTOM_Y,
   TRAY_LEFT,
   TRAY_RIGHT,
+  TRAY_STACK_COLS,
+  TRAY_STACK_STEP_Y,
   TRAY_TOP_Y,
   WALL_LEFT,
   WALL_RIGHT,
@@ -26,6 +28,7 @@ import {
   TREE_ORBIT_RADII,
 } from './skillTree';
 import { sound } from './sound';
+import { drawTreeIcon, preloadTreeIcons, TreeIconTone } from './treeIcons';
 import {
   ComputedStats,
   FloatingText,
@@ -44,6 +47,9 @@ import {
   SkillNodeDef,
   SlotInsertAnim,
   SlotSymbol,
+  StarfallBurst,
+  StarfallMeteor,
+  StarfallSparkle,
   WarpEffect,
 } from './types';
 
@@ -241,6 +247,14 @@ export class MedalGame {
   private slotScoreBoostTimer: number = 0; // 🕐: 5秒間全ポケット得点x1.5
   private slotPinBonusTimer: number = 0; // 💎: 5秒間ピン点数+3
 
+  // スターフォール（流星群＆ゴールド昇格）管理
+  private starfallTimer: number = 2.2;
+  private starfallQueue: Array<{ delay: number; fromRight: boolean; laneIdx: number }> = [];
+  private starfallMeteors: StarfallMeteor[] = [];
+  private starfallSparkles: StarfallSparkle[] = [];
+  private starfallBursts: StarfallBurst[] = [];
+  private starfallFromRight: boolean = true;
+
   // ホーム画面3Dコイン手触り跳ねギミック＆固有演出用
   private homeCoinHopOffsets: number[] = [0, 0, 0, 0, 0, 0];
   private homeCoinHopVels: number[] = [0, 0, 0, 0, 0, 0];
@@ -344,10 +358,60 @@ export class MedalGame {
 
   private lastFrameTime: number = performance.now();
 
+  // 描画高速化用オフスクリーンキャッシュ（DPR連動・見た目100%維持）
+  private renderCacheDpr: number = 0;
+  private boardBgCacheCanvas: HTMLCanvasElement | null = null;
+  private neonFrameCacheCanvas: HTMLCanvasElement | null = null;
+  private guideRailsCacheCanvas: HTMLCanvasElement | null = null;
+  private trayBaseCacheCanvas: HTMLCanvasElement | null = null;
+  private trayCoinSpriteCache = new Map<
+    string,
+    { canvas: HTMLCanvasElement; halfW: number; halfH: number }
+  >();
+  private pinSpriteCache = new Map<
+    string,
+    { canvas: HTMLCanvasElement; half: number }
+  >();
+  private medalSpriteCache = new Map<
+    string,
+    { canvas: HTMLCanvasElement; half: number }
+  >();
+  private medalRainbowRingCache = new Map<
+    number,
+    { canvas: HTMLCanvasElement; half: number }
+  >();
+  private medalRainbowRotFramesCache = new Map<
+    number,
+    Array<{ canvas: HTMLCanvasElement; half: number }>
+  >();
+  private medalLabelSpriteCache = new Map<
+    string,
+    { canvas: HTMLCanvasElement; halfW: number; halfH: number }
+  >();
+  private floatingTextSpriteCache = new Map<
+    string,
+    { canvas: HTMLCanvasElement; halfW: number; halfH: number }
+  >();
+  private slotSymbolSpriteCache = new Map<
+    string,
+    { canvas: HTMLCanvasElement; half: number }
+  >();
+  private pinElectrifiedSpriteCache = new Map<
+    string,
+    { canvas: HTMLCanvasElement; half: number }
+  >();
+  private fourPointStarSpriteCache = new Map<
+    string,
+    { canvas: HTMLCanvasElement; half: number; baseR: number }
+  >();
+  private trayCoinsLayerCacheCanvas: HTMLCanvasElement | null = null;
+  private trayCoinsLayerSignature: string = '';
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
     this.carbonPattern = this.createCarbonPattern();
+    preloadTreeIcons();
 
     this.loadSave();
     this.stats = this.skillTree.computeStats();
@@ -754,6 +818,36 @@ export class MedalGame {
     this.canvas.width = BOARD_WIDTH * dpr;
     this.canvas.height = BOARD_HEIGHT * dpr;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.invalidateRenderCaches();
+  }
+
+  private invalidateRenderCaches(): void {
+    this.renderCacheDpr = 0;
+    this.boardBgCacheCanvas = null;
+    this.neonFrameCacheCanvas = null;
+    this.guideRailsCacheCanvas = null;
+    this.trayBaseCacheCanvas = null;
+    this.trayCoinSpriteCache.clear();
+    this.pinSpriteCache.clear();
+    this.medalSpriteCache.clear();
+    this.medalRainbowRingCache.clear();
+    this.medalRainbowRotFramesCache.clear();
+    this.medalLabelSpriteCache.clear();
+    this.floatingTextSpriteCache.clear();
+    this.slotSymbolSpriteCache.clear();
+    this.pinElectrifiedSpriteCache.clear();
+    this.fourPointStarSpriteCache.clear();
+    this.trayCoinsLayerCacheCanvas = null;
+    this.trayCoinsLayerSignature = '';
+  }
+
+  private getCacheDpr(): number {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (this.renderCacheDpr !== dpr) {
+      this.invalidateRenderCaches();
+      this.renderCacheDpr = dpr;
+    }
+    return dpr;
   }
 
   private clientToLogical(clientX: number, clientY: number): { x: number; y: number } {
@@ -1854,6 +1948,14 @@ export class MedalGame {
     this.autoMagnetTimer = 0;
     this.slotScoreBoostTimer = 0;
     this.slotPinBonusTimer = 0;
+
+    // スターフォール初期化
+    this.starfallTimer = 2.2;
+    this.starfallQueue = [];
+    this.starfallMeteors = [];
+    this.starfallSparkles = [];
+    this.starfallBursts = [];
+    this.starfallFromRight = true;
     if (this.physics) {
       this.physics.resetPocketsLit();
     }
@@ -1912,6 +2014,14 @@ export class MedalGame {
     this.autoMagnetDropTimer = 0;
     this.slotScoreBoostTimer = 0;
     this.slotPinBonusTimer = 0;
+
+    // スターフォール初期化
+    this.starfallTimer = 2.2;
+    this.starfallQueue = [];
+    this.starfallMeteors = [];
+    this.starfallSparkles = [];
+    this.starfallBursts = [];
+    this.starfallFromRight = true;
 
     this.physics.medals = [];
     this.physics.setupBoard(this.stats);
@@ -2061,7 +2171,17 @@ export class MedalGame {
 
       if (bestIndex !== -1) {
         const picked = this.physics.medals.splice(bestIndex, 1)[0];
-        this.heldQueue.push(picked.type);
+        if (this.stats.autoReloadUnlocked) {
+          // 装填自動化：回収と同時に投入口へ自動装填
+          this.loadedQueue.push(picked.type);
+          this.roundInsertedCount++;
+          this.slotInsertAnims.push({
+            progress: 0,
+            type: picked.type,
+          });
+        } else {
+          this.heldQueue.push(picked.type);
+        }
         this.pickupParticles.push({
           x: picked.x,
           y: picked.y,
@@ -2078,6 +2198,9 @@ export class MedalGame {
 
     if (pickedAny) {
       sound.playPickup();
+      if (this.stats.autoReloadUnlocked) {
+        sound.playReload();
+      }
     }
   }
 
@@ -3099,15 +3222,19 @@ export class MedalGame {
       this.autoMagnetReloadTimer -= dtSec;
       if (this.autoMagnetReloadTimer <= 0) {
         this.autoMagnetReloadTimer = 0.08;
-        this.tryInsertMedalToSlot();
+        if (this.heldQueue.length > 0) {
+          this.tryInsertMedalToSlot();
+        }
       }
 
       // 3. 自動投下（投入口装填メダルを盤面へ）
       this.autoMagnetDropTimer -= dtSec;
       if (this.autoMagnetDropTimer <= 0) {
         this.autoMagnetDropTimer = 0.12;
-        const rx = WALL_LEFT + 25 + Math.random() * (WALL_RIGHT - WALL_LEFT - 50);
-        this.tryDropMedal(rx);
+        if (this.loadedQueue.length > 0) {
+          const rx = WALL_LEFT + 25 + Math.random() * (WALL_RIGHT - WALL_LEFT - 50);
+          this.tryDropMedal(rx);
+        }
       }
     }
 
@@ -3116,6 +3243,11 @@ export class MedalGame {
       this.updateSlot(dtSec);
     }
     this.updateSlotShooter(dtSec);
+
+    // スターフォール（流星群）更新
+    if (this.stats.starfallUnlocked || this.starfallMeteors.length > 0 || this.starfallSparkles.length > 0 || this.starfallBursts.length > 0) {
+      this.updateStarfall(dtSec);
+    }
   }
 
   private renderPlayPhase(): void {
@@ -3131,41 +3263,14 @@ export class MedalGame {
       ctx.translate(sx, sy);
     }
 
-    // 0. ガンメタル筐体ベース背景
-    const cabGrad = ctx.createLinearGradient(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
-    cabGrad.addColorStop(0, '#161b26');
-    cabGrad.addColorStop(0.5, '#0d1119');
-    cabGrad.addColorStop(1, '#141923');
-    ctx.fillStyle = cabGrad;
-    ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+    // 0 & 1. ガンメタル筐体ベース背景＋盤面カーボン＋スポットライト＋コーナーグリル（DPR対応オフスクリーンキャッシュ）
+    const bgCache = this.getBoardBgCache();
+    ctx.drawImage(bgCache, 0, 0, BOARD_WIDTH, BOARD_HEIGHT);
 
-    // 1. 盤面カーボンファイバー背景
     ctx.save();
     this.tracePlayfieldPath(ctx);
     ctx.clip();
 
-    if (this.carbonPattern) {
-      ctx.fillStyle = this.carbonPattern;
-    } else {
-      ctx.fillStyle = '#090d16';
-    }
-    ctx.fillRect(WALL_LEFT, 10, WALL_RIGHT - WALL_LEFT, POCKET_EXIT_Y);
-
-    const spotGrad = ctx.createRadialGradient(
-      BOARD_WIDTH * 0.5,
-      260,
-      20,
-      BOARD_WIDTH * 0.5,
-      260,
-      260
-    );
-    spotGrad.addColorStop(0, 'rgba(0, 242, 254, 0.08)');
-    spotGrad.addColorStop(0.6, 'rgba(181, 53, 246, 0.05)');
-    spotGrad.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
-    ctx.fillStyle = spotGrad;
-    ctx.fillRect(WALL_LEFT, 10, WALL_RIGHT - WALL_LEFT, POCKET_EXIT_Y);
-
-    this.drawCornerGrilles(ctx);
     this.drawGuideRails(ctx);
     this.drawCornerShooters(ctx);
     this.drawTopDispenser(ctx);
@@ -3206,6 +3311,9 @@ export class MedalGame {
     // プラズマ稲妻アーク放電描画
     this.drawLightningBolts(ctx);
 
+    // スターフォール（流星群・星屑・発光バースト）描画
+    this.drawStarfall(ctx);
+
     // 簡易スロット窓描画（盤面上部）
     if (this.stats.hotSlotUnlocked) {
       this.drawSlotWindow(ctx);
@@ -3224,18 +3332,7 @@ export class MedalGame {
     }
 
     for (const ft of this.floatingTexts) {
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, ft.alpha);
-      ctx.font = `900 ${Math.round(14 * ft.scale)}px 'Segoe UI', sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.shadowColor = ft.color;
-      ctx.shadowBlur = 8;
-      ctx.strokeStyle = '#050811';
-      ctx.lineWidth = 3.5;
-      ctx.strokeText(ft.text, ft.x, ft.y);
-      ctx.fillStyle = ft.color;
-      ctx.fillText(ft.text, ft.x, ft.y);
-      ctx.restore();
+      this.drawFloatingTextCached(ctx, ft);
     }
 
     // JACKPOT 画面全体フラッシュ演出
@@ -3808,33 +3905,114 @@ export class MedalGame {
     ctx.restore();
   }
 
+  private getBoardBgCache(): HTMLCanvasElement {
+    const dpr = this.getCacheDpr();
+    if (this.boardBgCacheCanvas) {
+      return this.boardBgCacheCanvas;
+    }
+    const off = document.createElement('canvas');
+    off.width = Math.round(BOARD_WIDTH * dpr);
+    off.height = Math.round(BOARD_HEIGHT * dpr);
+    const bctx = off.getContext('2d')!;
+    bctx.scale(dpr, dpr);
+
+    const cabGrad = bctx.createLinearGradient(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+    cabGrad.addColorStop(0, '#161b26');
+    cabGrad.addColorStop(0.5, '#0d1119');
+    cabGrad.addColorStop(1, '#141923');
+    bctx.fillStyle = cabGrad;
+    bctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+
+    bctx.save();
+    this.tracePlayfieldPath(bctx);
+    bctx.clip();
+
+    if (this.carbonPattern) {
+      bctx.fillStyle = this.carbonPattern;
+    } else {
+      bctx.fillStyle = '#090d16';
+    }
+    bctx.fillRect(WALL_LEFT, 10, WALL_RIGHT - WALL_LEFT, POCKET_EXIT_Y);
+
+    const spotGrad = bctx.createRadialGradient(
+      BOARD_WIDTH * 0.5,
+      260,
+      20,
+      BOARD_WIDTH * 0.5,
+      260,
+      260
+    );
+    spotGrad.addColorStop(0, 'rgba(0, 242, 254, 0.08)');
+    spotGrad.addColorStop(0.6, 'rgba(181, 53, 246, 0.05)');
+    spotGrad.addColorStop(1, 'rgba(0, 0, 0, 0.45)');
+    bctx.fillStyle = spotGrad;
+    bctx.fillRect(WALL_LEFT, 10, WALL_RIGHT - WALL_LEFT, POCKET_EXIT_Y);
+
+    this.drawCornerGrilles(bctx);
+    bctx.restore();
+
+    this.boardBgCacheCanvas = off;
+    return off;
+  }
+
   private tracePlayfieldPath(ctx: CanvasRenderingContext2D): void {
     ctx.beginPath();
     ctx.roundRect(WALL_LEFT, 12, WALL_RIGHT - WALL_LEFT, POCKET_EXIT_Y - 12, [28, 28, 8, 8]);
   }
 
   private drawPlayfieldNeonFrame(ctx: CanvasRenderingContext2D): void {
-    const neonGrad = ctx.createLinearGradient(WALL_LEFT, 0, WALL_RIGHT, 0);
-    neonGrad.addColorStop(0, '#00f2fe');
-    neonGrad.addColorStop(0.5, '#a855f7');
-    neonGrad.addColorStop(1, '#ff0878');
+    const dpr = this.getCacheDpr();
+    if (!this.neonFrameCacheCanvas) {
+      const off = document.createElement('canvas');
+      off.width = Math.round(BOARD_WIDTH * dpr);
+      off.height = Math.round(BOARD_HEIGHT * dpr);
+      const fctx = off.getContext('2d')!;
+      fctx.scale(dpr, dpr);
 
-    ctx.save();
-    ctx.shadowColor = '#00f2fe';
-    ctx.shadowBlur = 10;
-    ctx.strokeStyle = neonGrad;
-    ctx.lineWidth = 3.5;
-    this.tracePlayfieldPath(ctx);
-    ctx.stroke();
+      const neonGrad = fctx.createLinearGradient(WALL_LEFT, 0, WALL_RIGHT, 0);
+      neonGrad.addColorStop(0, '#00f2fe');
+      neonGrad.addColorStop(0.5, '#a855f7');
+      neonGrad.addColorStop(1, '#ff0878');
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-    ctx.lineWidth = 1;
-    this.tracePlayfieldPath(ctx);
-    ctx.stroke();
-    ctx.restore();
+      fctx.save();
+      fctx.shadowColor = '#00f2fe';
+      fctx.shadowBlur = 10;
+      fctx.strokeStyle = neonGrad;
+      fctx.lineWidth = 3.5;
+      this.tracePlayfieldPath(fctx);
+      fctx.stroke();
+
+      fctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      fctx.lineWidth = 1;
+      this.tracePlayfieldPath(fctx);
+      fctx.stroke();
+      fctx.restore();
+
+      this.neonFrameCacheCanvas = off;
+    }
+    ctx.drawImage(this.neonFrameCacheCanvas, 0, 0, BOARD_WIDTH, BOARD_HEIGHT);
   }
 
   private drawGuideRails(ctx: CanvasRenderingContext2D): void {
+    const dpr = this.getCacheDpr();
+    const allIdle = this.physics.guideRails.every((r) => r.hitAnim <= 0);
+    if (allIdle) {
+      if (!this.guideRailsCacheCanvas) {
+        const off = document.createElement('canvas');
+        off.width = Math.round(BOARD_WIDTH * dpr);
+        off.height = Math.round((POCKET_EXIT_Y + 20) * dpr);
+        const rctx = off.getContext('2d')!;
+        rctx.scale(dpr, dpr);
+        this.renderGuideRailsRaw(rctx);
+        this.guideRailsCacheCanvas = off;
+      }
+      ctx.drawImage(this.guideRailsCacheCanvas, 0, 0, BOARD_WIDTH, POCKET_EXIT_Y + 20);
+      return;
+    }
+    this.renderGuideRailsRaw(ctx);
+  }
+
+  private renderGuideRailsRaw(ctx: CanvasRenderingContext2D): void {
     for (const rail of this.physics.guideRails) {
       if (!rail.points || rail.points.length === 0) continue;
       const isLeft = rail.side === 'left';
@@ -5021,6 +5199,7 @@ export class MedalGame {
       : 'rgba(148, 163, 184, 0.55)';
     ctx.lineWidth = isWinFlash ? 2.0 : 1.2;
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
     // 2. 3リール窓（左・中・右）
     const reelW = 38;
@@ -5093,48 +5272,54 @@ export class MedalGame {
   }
 
   /**
-   * スロットリールシンボル描画
+   * スロットリールシンボル描画（DPR対応スプライトキャッシュ）
    */
   private drawSlotSymbol(ctx: CanvasRenderingContext2D, sym: string, x: number, y: number): void {
-    ctx.save();
-    ctx.translate(x, y);
+    const dpr = this.getCacheDpr();
+    let sp = this.slotSymbolSpriteCache.get(sym);
+    if (!sp) {
+      const half = 16;
+      const off = document.createElement('canvas');
+      off.width = Math.round(half * 2 * dpr);
+      off.height = Math.round(half * 2 * dpr);
+      const sctx = off.getContext('2d')!;
+      sctx.scale(dpr, dpr);
+      sctx.translate(half, half);
 
-    if (sym === '7') {
-      // 赤7（静止画、深紅/ルビーグラデーション＋シャンパンゴールド縁取り）
-      this.drawRedSeven(ctx, 0, 0, 22, 22);
-    } else if (sym === 'bell') {
-      // 🔔 ベル
-      ctx.font = '16px "Segoe UI Emoji", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🔔', 0, 0);
-    } else if (sym === 'auto') {
-      // 🧲 オート
-      ctx.font = '16px "Segoe UI Emoji", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🧲', 0, 0);
-    } else if (sym === 'clock') {
-      // 🕐 時計
-      ctx.font = '16px "Segoe UI Emoji", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🕐', 0, 0);
-    } else if (sym === 'dia') {
-      // 💎 ダイヤ
-      ctx.font = '16px "Segoe UI Emoji", sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('💎', 0, 0);
-    } else {
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(sym, 0, 0);
+      if (sym === '7') {
+        this.drawRedSeven(sctx, 0, 0, 22, 22);
+      } else if (sym === 'bell') {
+        sctx.font = '16px "Segoe UI Emoji", sans-serif';
+        sctx.textAlign = 'center';
+        sctx.textBaseline = 'middle';
+        sctx.fillText('🔔', 0, 0);
+      } else if (sym === 'auto') {
+        sctx.font = '16px "Segoe UI Emoji", sans-serif';
+        sctx.textAlign = 'center';
+        sctx.textBaseline = 'middle';
+        sctx.fillText('🧲', 0, 0);
+      } else if (sym === 'clock') {
+        sctx.font = '16px "Segoe UI Emoji", sans-serif';
+        sctx.textAlign = 'center';
+        sctx.textBaseline = 'middle';
+        sctx.fillText('🕐', 0, 0);
+      } else if (sym === 'dia') {
+        sctx.font = '16px "Segoe UI Emoji", sans-serif';
+        sctx.textAlign = 'center';
+        sctx.textBaseline = 'middle';
+        sctx.fillText('💎', 0, 0);
+      } else {
+        sctx.fillStyle = '#94a3b8';
+        sctx.font = 'bold 12px sans-serif';
+        sctx.textAlign = 'center';
+        sctx.textBaseline = 'middle';
+        sctx.fillText(sym, 0, 0);
+      }
+
+      sp = { canvas: off, half };
+      this.slotSymbolSpriteCache.set(sym, sp);
     }
-
-    ctx.restore();
+    ctx.drawImage(sp.canvas, x - sp.half, y - sp.half, sp.half * 2, sp.half * 2);
   }
 
   /**
@@ -5243,115 +5428,633 @@ export class MedalGame {
     ctx.restore();
   }
 
+  /**
+   * スターフォール（流星群）の周期発生・移動・きらめき星屑生成・メダル昇格判定
+   */
+  private updateStarfall(dtSec: number): void {
+    // 1. 周期的に流星群を予約（初回2.2秒後、以降5.0秒ごと）
+    if (this.stats.starfallUnlocked) {
+      this.starfallTimer -= dtSec;
+      if (this.starfallTimer <= 0) {
+        this.starfallTimer = 5.0;
+        const fromRight = this.starfallFromRight;
+        this.starfallFromRight = !this.starfallFromRight;
+
+        // 4本の流れ星を0.20秒ずつ時間差で盤面全域の異なる高さへ発射
+        const laneOrder = [0, 1, 2, 3];
+        for (let i = laneOrder.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = laneOrder[i];
+          laneOrder[i] = laneOrder[j];
+          laneOrder[j] = tmp;
+        }
+        for (let i = 0; i < 4; i++) {
+          this.starfallQueue.push({
+            delay: i * 0.20,
+            fromRight,
+            laneIdx: laneOrder[i],
+          });
+        }
+        sound.playStarfallAppear();
+      }
+    }
+
+    // 2. 予約キューから流星を順次発射
+    for (let i = this.starfallQueue.length - 1; i >= 0; i--) {
+      const q = this.starfallQueue[i];
+      q.delay -= dtSec;
+      if (q.delay <= 0) {
+        this.starfallQueue.splice(i, 1);
+        this.spawnStarfallMeteor(q.fromRight, q.laneIdx);
+      }
+    }
+
+    // 3. 流星本体の更新・きらめき星屑生成・メダル接触判定
+    for (let i = this.starfallMeteors.length - 1; i >= 0; i--) {
+      const mt = this.starfallMeteors[i];
+      mt.x += mt.vx * dtSec;
+      mt.y += mt.vy * dtSec;
+      mt.rotAngle += 5.2 * dtSec;
+      mt.twinklePhase += 17.0 * dtSec;
+
+      // 飛行中、尾の周囲にきらめく4点星パーティクルを連続放出
+      mt.sparkleAccum += dtSec;
+      const spd = Math.hypot(mt.vx, mt.vy) || 1;
+      const ux = mt.vx / spd;
+      const uy = mt.vy / spd;
+      while (mt.sparkleAccum >= 0.022) {
+        mt.sparkleAccum -= 0.022;
+        const backDist = 6 + Math.random() * 44;
+        const sideSpread = (Math.random() - 0.5) * 20;
+        const px = -uy;
+        const py = ux;
+        const life = 0.34 + Math.random() * 0.28;
+        this.starfallSparkles.push({
+          x: mt.x - ux * backDist + px * sideSpread,
+          y: mt.y - uy * backDist + py * sideSpread,
+          vx: -ux * (18 + Math.random() * 30) + px * (Math.random() - 0.5) * 32,
+          vy: -uy * (18 + Math.random() * 30) + py * (Math.random() - 0.5) * 32 + 12,
+          size: 3.2 + Math.random() * 4.2,
+          life,
+          maxLife: life,
+          color: Math.random() < 0.55 ? '#fef08a' : Math.random() < 0.75 ? '#ffffff' : mt.colorTail,
+          twinklePhase: Math.random() * Math.PI * 2,
+          rot: Math.random() * Math.PI,
+          vRot: (Math.random() - 0.5) * 8,
+        });
+      }
+
+      // 盤面メダルとの接触判定（ヘッド〜テール前方46px線分で取りこぼし防止）
+      const segX2 = mt.x - ux * 46;
+      const segY2 = mt.y - uy * 46;
+      const dxSeg = segX2 - mt.x;
+      const dySeg = segY2 - mt.y;
+      const segLenSq = dxSeg * dxSeg + dySeg * dySeg || 1;
+
+      for (const m of this.physics.medals) {
+        if (m.zone !== 'board') continue;
+        if (mt.hitMedalIds.has(m.id)) continue;
+
+        const tProj = Math.max(
+          0,
+          Math.min(1, ((m.x - mt.x) * dxSeg + (m.y - mt.y) * dySeg) / segLenSq)
+        );
+        const nearX = mt.x + dxSeg * tProj;
+        const nearY = mt.y + dySeg * tProj;
+        const dist = Math.hypot(m.x - nearX, m.y - nearY);
+
+        if (dist <= m.radius + 13) {
+          mt.hitMedalIds.add(m.id);
+          const wasGold = m.type === 'gold';
+          if (!wasGold) {
+            // ゴールドメダルへ昇格（既存の接触倍率育成も無駄にならないよう+2.0・最低3.0）
+            m.type = 'gold';
+            m.chargeMultiplier = Math.min(16.0, Math.max(3.0, +(m.chargeMultiplier + 2.0).toFixed(2)));
+          } else {
+            // すでにゴールドメダルならさらに倍率+1.0
+            m.chargeMultiplier = Math.min(16.0, +(m.chargeMultiplier + 1.0).toFixed(2));
+          }
+          m.contactFlash = 1.0;
+
+          // 文字は一切出さず、黄金バーストリング＆4点星スパークル発光エフェクトのみで表現
+          this.starfallBursts.push({
+            x: m.x,
+            y: m.y,
+            progress: 0,
+            maxR: wasGold ? 46 : 38,
+            isBoost: wasGold,
+          });
+          for (let k = 0; k < 10; k++) {
+            const ang = (k / 10) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+            const pSpd = 65 + Math.random() * 95;
+            const pLife = 0.42 + Math.random() * 0.24;
+            this.starfallSparkles.push({
+              x: m.x,
+              y: m.y,
+              vx: Math.cos(ang) * pSpd,
+              vy: Math.sin(ang) * pSpd - 16,
+              size: 4.5 + Math.random() * 4.5,
+              life: pLife,
+              maxLife: pLife,
+              color: k % 3 === 0 ? '#ffffff' : k % 3 === 1 ? '#fef08a' : '#facc15',
+              twinklePhase: Math.random() * Math.PI * 2,
+              rot: Math.random() * Math.PI,
+              vRot: (Math.random() - 0.5) * 11,
+            });
+          }
+          sound.playStarfallHit();
+        }
+      }
+
+      // 盤面外へ完全に抜けたら削除
+      if (
+        mt.x < -mt.tailLen - 60 ||
+        mt.x > BOARD_WIDTH + mt.tailLen + 60 ||
+        mt.y > POCKET_EXIT_Y + mt.tailLen + 60
+      ) {
+        this.starfallMeteors.splice(i, 1);
+      }
+    }
+
+    // 4. きらめき星屑パーティクル更新
+    for (let i = this.starfallSparkles.length - 1; i >= 0; i--) {
+      const sp = this.starfallSparkles[i];
+      sp.life -= dtSec;
+      sp.x += sp.vx * dtSec;
+      sp.y += sp.vy * dtSec;
+      sp.vx *= 0.96;
+      sp.vy *= 0.96;
+      sp.twinklePhase += 22.0 * dtSec;
+      sp.rot += sp.vRot * dtSec;
+      if (sp.life <= 0) {
+        this.starfallSparkles.splice(i, 1);
+      }
+    }
+
+    // 5. メダル昇格発光バースト更新
+    for (let i = this.starfallBursts.length - 1; i >= 0; i--) {
+      const b = this.starfallBursts[i];
+      b.progress += dtSec * 2.6;
+      if (b.progress >= 1) {
+        this.starfallBursts.splice(i, 1);
+      }
+    }
+  }
+
+  /**
+   * 1本の流れ星を盤面外から斜め下へ発射
+   */
+  private spawnStarfallMeteor(fromRight: boolean, laneIdx: number): void {
+    const palettes = [
+      { head: '#fef08a', tail: '#38bdf8' }, // シャンパンゴールド×アイスシアン
+      { head: '#ffffff', tail: '#facc15' }, // 純白×スターゴールド
+      { head: '#fef08a', tail: '#f472b6' }, // ゴールド×ネビュラピンク
+      { head: '#e0f2fe', tail: '#38bdf8' }, // アイスホワイト×シアン
+    ];
+    const pal = palettes[laneIdx % palettes.length];
+    const startY = 72 + laneIdx * 82 + (Math.random() - 0.5) * 24;
+    const speedX = 370 + Math.random() * 55;
+    const speedY = 215 + Math.random() * 45;
+
+    this.starfallMeteors.push({
+      x: fromRight ? BOARD_WIDTH + 22 : -22,
+      y: startY,
+      vx: fromRight ? -speedX : speedX,
+      vy: speedY,
+      tailLen: 135 + Math.random() * 40,
+      width: 6.5 + (laneIdx % 2) * 1.5,
+      colorHead: pal.head,
+      colorTail: pal.tail,
+      twinklePhase: Math.random() * Math.PI * 2,
+      rotAngle: Math.random() * Math.PI,
+      sparkleAccum: 0,
+      hitMedalIds: new Set<number>(),
+    });
+  }
+
+  /**
+   * 4点星（✦）描画ヘルパー（DPR対応発光スプライトキャッシュで回転・グロウ完全維持＆高速化）
+   */
+  private drawFourPointStar(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    rOuter: number,
+    rInner: number,
+    rot: number,
+    color: string,
+    glowColor: string,
+    glowBlur: number
+  ): void {
+    const dpr = this.getCacheDpr();
+    const ratioKey = Math.round((rInner / Math.max(0.1, rOuter)) * 100);
+    const key = `${color}|${glowColor}|${glowBlur > 0 ? 1 : 0}|${ratioKey}`;
+    let sp = this.fourPointStarSpriteCache.get(key);
+    if (!sp) {
+      const baseR = 14;
+      const half = 28;
+      const off = document.createElement('canvas');
+      off.width = Math.round(half * 2 * dpr);
+      off.height = Math.round(half * 2 * dpr);
+      const sctx = off.getContext('2d')!;
+      sctx.scale(dpr, dpr);
+      sctx.translate(half, half);
+      sctx.fillStyle = color;
+      if (glowBlur > 0) {
+        sctx.shadowColor = glowColor;
+        sctx.shadowBlur = 12;
+      }
+      const innerBase = baseR * (ratioKey / 100);
+      sctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const r = i % 2 === 0 ? baseR : innerBase;
+        const a = (i * Math.PI) / 4;
+        const px = Math.cos(a) * r;
+        const py = Math.sin(a) * r;
+        if (i === 0) sctx.moveTo(px, py);
+        else sctx.lineTo(px, py);
+      }
+      sctx.closePath();
+      sctx.fill();
+      sp = { canvas: off, half, baseR };
+      this.fourPointStarSpriteCache.set(key, sp);
+    }
+
+    const scale = rOuter / sp.baseR;
+    const drawHalf = sp.half * scale;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.drawImage(sp.canvas, -drawHalf, -drawHalf, drawHalf * 2, drawHalf * 2);
+    ctx.restore();
+  }
+
+  /**
+   * スターフォール（流星群・きらめき星屑・メダル変化発光バースト）の描画
+   */
+  private drawStarfall(ctx: CanvasRenderingContext2D): void {
+    if (
+      this.starfallMeteors.length === 0 &&
+      this.starfallSparkles.length === 0 &&
+      this.starfallBursts.length === 0
+    ) {
+      return;
+    }
+
+    // 1. メダル変化時の黄金発光バースト（文字なし・純粋な光輪＆コロナフラッシュ）
+    for (const b of this.starfallBursts) {
+      const ease = 1 - Math.pow(1 - b.progress, 3);
+      const alpha = Math.max(0, 1 - b.progress);
+      const r = 12 + (b.maxR - 12) * ease;
+
+      ctx.save();
+      // 中心の眩い黄金フラッシュコロナ
+      const coreGrad = ctx.createRadialGradient(b.x, b.y, 2, b.x, b.y, r * 0.95);
+      coreGrad.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.85})`);
+      coreGrad.addColorStop(0.45, `rgba(254, 240, 138, ${alpha * 0.55})`);
+      coreGrad.addColorStop(1, 'rgba(250, 204, 21, 0)');
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r * 0.95, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 外側黄金リング
+      ctx.globalAlpha = alpha;
+      ctx.shadowColor = b.isBoost ? '#ffffff' : '#facc15';
+      ctx.shadowBlur = 18;
+      ctx.strokeStyle = b.isBoost ? '#ffffff' : '#fef08a';
+      ctx.lineWidth = 3.2 * (1 - b.progress * 0.6);
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 内側シャープリング
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1.6 * (1 - b.progress * 0.5);
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r * 0.68, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 2. きらめく4点星パーティクル（星屑）
+    for (const sp of this.starfallSparkles) {
+      const lifeRatio = Math.max(0, sp.life / sp.maxLife);
+      const twinkle = 0.42 + 0.58 * Math.abs(Math.sin(sp.twinklePhase));
+      const size = sp.size * (0.45 + 0.55 * lifeRatio) * (0.8 + 0.35 * twinkle);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, lifeRatio * 1.2) * twinkle;
+      this.drawFourPointStar(ctx, sp.x, sp.y, size, size * 0.28, sp.rot, sp.color, sp.color, 10);
+      ctx.restore();
+    }
+
+    // 3. きらめく流れ星本体（シマー光帯テール＋二重回転4点星コア）
+    for (const mt of this.starfallMeteors) {
+      const spd = Math.hypot(mt.vx, mt.vy) || 1;
+      const ux = mt.vx / spd;
+      const uy = mt.vy / spd;
+      const shimmer = 0.84 + 0.26 * Math.sin(mt.twinklePhase);
+      const tailLen = mt.tailLen * (0.94 + 0.08 * Math.sin(mt.twinklePhase * 0.7));
+      const ex = mt.x - ux * tailLen;
+      const ey = mt.y - uy * tailLen;
+
+      ctx.save();
+      // 外側星彩グロウ帯
+      const tailGrad = ctx.createLinearGradient(mt.x, mt.y, ex, ey);
+      tailGrad.addColorStop(0, mt.colorHead);
+      tailGrad.addColorStop(0.32, mt.colorTail);
+      tailGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+      ctx.strokeStyle = tailGrad;
+      ctx.lineWidth = mt.width * shimmer;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = mt.colorTail;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(mt.x, mt.y);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+
+      // 内側の高輝度ホワイト芯線
+      const coreTailGrad = ctx.createLinearGradient(
+        mt.x,
+        mt.y,
+        mt.x - ux * tailLen * 0.62,
+        mt.y - uy * tailLen * 0.62
+      );
+      coreTailGrad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
+      coreTailGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.strokeStyle = coreTailGrad;
+      ctx.lineWidth = Math.max(1.8, mt.width * 0.34 * shimmer);
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.moveTo(mt.x, mt.y);
+      ctx.lineTo(mt.x - ux * tailLen * 0.62, mt.y - uy * tailLen * 0.62);
+      ctx.stroke();
+
+      // 先端コロナ発光
+      const headHalo = ctx.createRadialGradient(mt.x, mt.y, 1, mt.x, mt.y, 18 * shimmer);
+      headHalo.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      headHalo.addColorStop(0.45, 'rgba(254, 240, 138, 0.55)');
+      headHalo.addColorStop(1, 'rgba(56, 189, 248, 0)');
+      ctx.fillStyle = headHalo;
+      ctx.beginPath();
+      ctx.arc(mt.x, mt.y, 18 * shimmer, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // 先端の二重回転きらめき4点星コア
+      const outerStarR = (11.5 + 3.0 * Math.sin(mt.twinklePhase)) * 1.0;
+      const innerStarR = 7.5 + 2.5 * Math.cos(mt.twinklePhase * 1.3);
+      this.drawFourPointStar(
+        ctx,
+        mt.x,
+        mt.y,
+        outerStarR,
+        outerStarR * 0.26,
+        mt.rotAngle * 0.55,
+        mt.colorHead,
+        mt.colorTail,
+        14
+      );
+      this.drawFourPointStar(
+        ctx,
+        mt.x,
+        mt.y,
+        innerStarR,
+        innerStarR * 0.24,
+        -mt.rotAngle * 0.85 + Math.PI / 4,
+        '#ffffff',
+        '#ffffff',
+        10
+      );
+    }
+  }
+
+  private getPinIdleSprite(
+    isBumper: boolean,
+    r: number,
+    pinActive: boolean
+  ): { canvas: HTMLCanvasElement; half: number } {
+    const dpr = this.getCacheDpr();
+    const key = `${isBumper ? 'b' : 'p'}_${Math.round(r * 10)}_${pinActive ? 1 : 0}`;
+    const cached = this.pinSpriteCache.get(key);
+    if (cached) return cached;
+
+    const half = Math.ceil(r + (isBumper ? 18 : 4));
+    const off = document.createElement('canvas');
+    off.width = Math.round(half * 2 * dpr);
+    off.height = Math.round(half * 2 * dpr);
+    const pctx = off.getContext('2d')!;
+    pctx.scale(dpr, dpr);
+
+    if (isBumper) {
+      pctx.save();
+      pctx.shadowColor = '#00f2fe';
+      pctx.shadowBlur = 10;
+      pctx.strokeStyle = '#00f2fe';
+      pctx.lineWidth = 2.4;
+      pctx.beginPath();
+      pctx.arc(half, half, r + 4, 0, Math.PI * 2);
+      pctx.stroke();
+
+      pctx.strokeStyle = 'rgba(244, 114, 182, 0.7)';
+      pctx.lineWidth = 1.6;
+      pctx.beginPath();
+      pctx.arc(half, half, r + 1.5, 0, Math.PI * 2);
+      pctx.stroke();
+
+      const bGrad = pctx.createRadialGradient(
+        half - r * 0.35,
+        half - r * 0.35,
+        2,
+        half,
+        half,
+        r
+      );
+      bGrad.addColorStop(0, '#e0f2fe');
+      bGrad.addColorStop(0.3, '#38bdf8');
+      bGrad.addColorStop(0.7, '#1e3a8a');
+      bGrad.addColorStop(1, '#0f172a');
+      pctx.fillStyle = bGrad;
+      pctx.beginPath();
+      pctx.arc(half, half, r, 0, Math.PI * 2);
+      pctx.fill();
+
+      pctx.fillStyle = '#fde047';
+      pctx.font = `900 ${Math.round(r * 0.75)}px sans-serif`;
+      pctx.textAlign = 'center';
+      pctx.textBaseline = 'middle';
+      pctx.fillText('✦', half, half + 0.5);
+      pctx.restore();
+    } else {
+      const g = pctx.createRadialGradient(
+        half - r * 0.3,
+        half - r * 0.3,
+        1,
+        half,
+        half,
+        r
+      );
+      if (pinActive) {
+        g.addColorStop(0, '#e0f2fe');
+        g.addColorStop(0.6, '#38bdf8');
+        g.addColorStop(1, '#1e3a8a');
+      } else {
+        g.addColorStop(0, '#f1f5f9');
+        g.addColorStop(0.55, '#64748b');
+        g.addColorStop(1, '#1e293b');
+      }
+      pctx.fillStyle = g;
+      pctx.beginPath();
+      pctx.arc(half, half, r, 0, Math.PI * 2);
+      pctx.fill();
+    }
+
+    const entry = { canvas: off, half };
+    this.pinSpriteCache.set(key, entry);
+    return entry;
+  }
+
   private drawPins(ctx: CanvasRenderingContext2D): void {
     const pinActive = this.stats.basePinScore > 0;
 
     for (const pin of this.physics.pins) {
       const isBumper = pin.kind === 'bumper';
       const r = pin.radius + pin.hitAnim * (isBumper ? 6.0 : 3.0);
-      ctx.save();
 
-      if (isBumper) {
-        // === 大型ネオンバンパー描画 ===
-        // 1. ヒット衝撃波リング
-        if (pin.hitAnim > 0.05) {
+      if (pin.hitAnim <= 0.05) {
+        const sp = this.getPinIdleSprite(isBumper, pin.radius, pinActive);
+        ctx.drawImage(
+          sp.canvas,
+          pin.x - sp.half,
+          pin.y - sp.half,
+          sp.half * 2,
+          sp.half * 2
+        );
+      } else {
+        ctx.save();
+        if (isBumper) {
+          // === 大型ネオンバンパー描画（ヒット膨張時） ===
           ctx.strokeStyle = `rgba(0, 242, 254, ${pin.hitAnim * 0.8})`;
           ctx.lineWidth = 2.5;
           ctx.beginPath();
           ctx.arc(pin.x, pin.y, r + pin.hitAnim * 16, 0, Math.PI * 2);
           ctx.stroke();
-        }
 
-        // 2. 外周二重ネオンリング
-        ctx.shadowColor = pin.hitAnim > 0.1 ? '#ffffff' : '#00f2fe';
-        ctx.shadowBlur = pin.hitAnim > 0.1 ? 18 : 10;
-        ctx.strokeStyle = pin.hitAnim > 0.1 ? '#ffffff' : '#00f2fe';
-        ctx.lineWidth = 2.4;
-        ctx.beginPath();
-        ctx.arc(pin.x, pin.y, r + 4, 0, Math.PI * 2);
-        ctx.stroke();
+          ctx.shadowColor = pin.hitAnim > 0.1 ? '#ffffff' : '#00f2fe';
+          ctx.shadowBlur = pin.hitAnim > 0.1 ? 18 : 10;
+          ctx.strokeStyle = pin.hitAnim > 0.1 ? '#ffffff' : '#00f2fe';
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.arc(pin.x, pin.y, r + 4, 0, Math.PI * 2);
+          ctx.stroke();
 
-        ctx.strokeStyle = 'rgba(244, 114, 182, 0.7)';
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.arc(pin.x, pin.y, r + 1.5, 0, Math.PI * 2);
-        ctx.stroke();
+          ctx.strokeStyle = 'rgba(244, 114, 182, 0.7)';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.arc(pin.x, pin.y, r + 1.5, 0, Math.PI * 2);
+          ctx.stroke();
 
-        // 3. バンパー本体（立体的ドーム球体）
-        const bGrad = ctx.createRadialGradient(
-          pin.x - r * 0.35,
-          pin.y - r * 0.35,
-          2,
-          pin.x,
-          pin.y,
-          r
-        );
-        if (pin.hitAnim > 0.15) {
-          bGrad.addColorStop(0, '#ffffff');
-          bGrad.addColorStop(0.4, '#7dd3fc');
-          bGrad.addColorStop(1, '#0284c7');
+          const bGrad = ctx.createRadialGradient(
+            pin.x - r * 0.35,
+            pin.y - r * 0.35,
+            2,
+            pin.x,
+            pin.y,
+            r
+          );
+          if (pin.hitAnim > 0.15) {
+            bGrad.addColorStop(0, '#ffffff');
+            bGrad.addColorStop(0.4, '#7dd3fc');
+            bGrad.addColorStop(1, '#0284c7');
+          } else {
+            bGrad.addColorStop(0, '#e0f2fe');
+            bGrad.addColorStop(0.3, '#38bdf8');
+            bGrad.addColorStop(0.7, '#1e3a8a');
+            bGrad.addColorStop(1, '#0f172a');
+          }
+          ctx.fillStyle = bGrad;
+          ctx.beginPath();
+          ctx.arc(pin.x, pin.y, r, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = pin.hitAnim > 0.1 ? '#ffffff' : '#fde047';
+          ctx.font = `900 ${Math.round(r * 0.75)}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('✦', pin.x, pin.y + 0.5);
         } else {
-          bGrad.addColorStop(0, '#e0f2fe');
-          bGrad.addColorStop(0.3, '#38bdf8');
-          bGrad.addColorStop(0.7, '#1e3a8a');
-          bGrad.addColorStop(1, '#0f172a');
-        }
-        ctx.fillStyle = bGrad;
-        ctx.beginPath();
-        ctx.arc(pin.x, pin.y, r, 0, Math.PI * 2);
-        ctx.fill();
+          // === 通常の釘（クロームピン・ヒット膨張時） ===
+          const g = ctx.createRadialGradient(
+            pin.x - r * 0.3,
+            pin.y - r * 0.3,
+            1,
+            pin.x,
+            pin.y,
+            r
+          );
+          if (pin.hitAnim > 0.15) {
+            g.addColorStop(0, '#ffffff');
+            g.addColorStop(1, '#00f2fe');
+          } else if (pinActive) {
+            g.addColorStop(0, '#e0f2fe');
+            g.addColorStop(0.6, '#38bdf8');
+            g.addColorStop(1, '#1e3a8a');
+          } else {
+            g.addColorStop(0, '#f1f5f9');
+            g.addColorStop(0.55, '#64748b');
+            g.addColorStop(1, '#1e293b');
+          }
 
-        // 4. 中央のスターエンブレム（✦）
-        ctx.fillStyle = pin.hitAnim > 0.1 ? '#ffffff' : '#fde047';
-        ctx.font = `900 ${Math.round(r * 0.75)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('✦', pin.x, pin.y + 0.5);
-      } else {
-        // === 通常の釘（クロームピン） ===
-        const g = ctx.createRadialGradient(
-          pin.x - r * 0.3,
-          pin.y - r * 0.3,
-          1,
-          pin.x,
-          pin.y,
-          r
-        );
-        if (pin.hitAnim > 0.15) {
-          g.addColorStop(0, '#ffffff');
-          g.addColorStop(1, '#00f2fe');
-        } else if (pinActive) {
-          g.addColorStop(0, '#e0f2fe');
-          g.addColorStop(0.6, '#38bdf8');
-          g.addColorStop(1, '#1e3a8a');
-        } else {
-          g.addColorStop(0, '#f1f5f9');
-          g.addColorStop(0.55, '#64748b');
-          g.addColorStop(1, '#1e293b');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(pin.x, pin.y, r, 0, Math.PI * 2);
+          ctx.fill();
         }
-
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(pin.x, pin.y, r, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.restore();
       }
 
-      // === プラズマ帯電エフェクト（3秒間のパルス放電） ===
+      // === プラズマ帯電エフェクト（3秒間のパルス放電・発光オーラスプライトキャッシュ） ===
       if (pin.electrifiedTimer > 0) {
         const elecRatio = Math.min(1, pin.electrifiedTimer / 3.0);
         const pulse = Math.sin(Date.now() * 0.015 + pin.id) * 0.25 + 0.75;
 
-        // 1. ピン周囲の紫プラズマ放電オーラ
+        // 1. ピン周囲の紫プラズマ放電オーラ（DPR対応スプライトキャッシュ）
+        const dpr = this.getCacheDpr();
+        const eKey = `${isBumper ? 'b' : 'p'}_${Math.round(pin.radius * 10)}`;
+        let esp = this.pinElectrifiedSpriteCache.get(eKey);
+        if (!esp) {
+          const baseRingR = pin.radius + (isBumper ? 4.5 : 3.1);
+          const half = Math.ceil(baseRingR + 18);
+          const off = document.createElement('canvas');
+          off.width = Math.round(half * 2 * dpr);
+          off.height = Math.round(half * 2 * dpr);
+          const ectx = off.getContext('2d')!;
+          ectx.scale(dpr, dpr);
+          ectx.shadowColor = '#c084fc';
+          ectx.shadowBlur = 13;
+          ectx.strokeStyle = 'rgba(192, 132, 252, 0.9)';
+          ectx.lineWidth = isBumper ? 2.8 : 2.0;
+          ectx.beginPath();
+          ectx.arc(half, half, baseRingR, 0, Math.PI * 2);
+          ectx.stroke();
+          esp = { canvas: off, half };
+          this.pinElectrifiedSpriteCache.set(eKey, esp);
+        }
+
         ctx.save();
-        ctx.shadowColor = '#c084fc';
-        ctx.shadowBlur = 14 * pulse;
-        ctx.strokeStyle = `rgba(192, 132, 252, ${0.85 * pulse * elecRatio})`;
-        ctx.lineWidth = isBumper ? 2.8 : 2.0;
-        ctx.beginPath();
-        ctx.arc(pin.x, pin.y, r + (isBumper ? 5 : 3.5) * pulse, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.globalAlpha = pulse * elecRatio;
+        const drawHalf = esp.half * (0.94 + 0.08 * pulse);
+        ctx.drawImage(
+          esp.canvas,
+          pin.x - drawHalf,
+          pin.y - drawHalf,
+          drawHalf * 2,
+          drawHalf * 2
+        );
 
         // 2. ピン周囲の微小スパーク（チリチリ周回するプラズマアーク）
+        ctx.globalAlpha = 1;
         const sparkAngle = (Date.now() * 0.009 + pin.id * 1.7) % (Math.PI * 2);
         const sparkR = r + (isBumper ? 4.5 : 3.0);
         const sx1 = pin.x + Math.cos(sparkAngle) * sparkR;
@@ -5371,15 +6074,25 @@ export class MedalGame {
         ctx.stroke();
         ctx.restore();
       }
-
-      ctx.restore();
     }
+  }
+
+  private getChargeVisualTier(chargeMult: number): 0 | 1 | 2 | 3 | 4 {
+    if (chargeMult >= 6.0) return 4; // レインボー（虹）
+    if (chargeMult >= 4.5) return 3; // クリムゾン（赤）
+    if (chargeMult >= 3.0) return 2; // エメラルド（緑）
+    if (chargeMult >= 2.0) return 1; // シアン（青）
+    return 0; // 通常（固有色）
   }
 
   private drawMedalTrail(ctx: CanvasRenderingContext2D, m: MedalEntity): void {
     const st = MEDAL_STYLE[m.type];
     const len = m.trail.length;
     const isWarped = Boolean(m.warpTrailTimer && m.warpTrailTimer > 0);
+    const tier = this.getChargeVisualTier(m.chargeMultiplier);
+    const nowSec = performance.now() * 0.001;
+    const baseHue = (nowSec * 180) % 360;
+
     ctx.save();
     ctx.lineCap = 'round';
     for (let i = 1; i < len; i++) {
@@ -5390,10 +6103,27 @@ export class MedalGame {
         ctx.strokeStyle = i % 2 === 0 ? '#00f2fe' : '#c084fc';
         ctx.globalAlpha = ratio * 0.85;
         ctx.lineWidth = m.radius * 1.35 * ratio;
+      } else if (tier === 4) {
+        const segHue = (baseHue + i * 26) % 360;
+        ctx.strokeStyle = `hsl(${segHue}, 100%, 64%)`;
+        ctx.globalAlpha = ratio * 0.78;
+        ctx.lineWidth = m.radius * 1.38 * ratio;
+      } else if (tier === 3) {
+        ctx.strokeStyle = 'rgba(255, 42, 95, 0.88)';
+        ctx.globalAlpha = ratio * 0.72;
+        ctx.lineWidth = m.radius * 1.3 * ratio;
+      } else if (tier === 2) {
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.82)';
+        ctx.globalAlpha = ratio * 0.66;
+        ctx.lineWidth = m.radius * 1.24 * ratio;
+      } else if (tier === 1) {
+        ctx.strokeStyle = 'rgba(0, 242, 254, 0.78)';
+        ctx.globalAlpha = ratio * 0.62;
+        ctx.lineWidth = m.radius * 1.2 * ratio;
       } else {
-        ctx.strokeStyle = m.chargeMultiplier > 1.2 ? 'rgba(217, 70, 239, 0.65)' : st.trail;
-        ctx.globalAlpha = ratio * 0.55;
-        ctx.lineWidth = m.radius * 1.15 * ratio;
+        ctx.strokeStyle = st.trail;
+        ctx.globalAlpha = ratio * 0.52;
+        ctx.lineWidth = m.radius * 1.1 * ratio;
       }
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
@@ -5403,45 +6133,63 @@ export class MedalGame {
     ctx.restore();
   }
 
-  private drawBottomTrayAndInsertConsole(ctx: CanvasRenderingContext2D): void {
+  private getTrayBaseCache(): HTMLCanvasElement {
+    const dpr = this.getCacheDpr();
+    if (this.trayBaseCacheCanvas) {
+      return this.trayBaseCacheCanvas;
+    }
+    const off = document.createElement('canvas');
+    off.width = Math.round(BOARD_WIDTH * dpr);
+    off.height = Math.round(BOARD_HEIGHT * dpr);
+    const tctx = off.getContext('2d')!;
+    tctx.scale(dpr, dpr);
+
     const trayW = TRAY_RIGHT - TRAY_LEFT;
     const trayH = TRAY_BOTTOM_Y - TRAY_TOP_Y;
 
     // 左側：コンパクト下皿（3Dコイン積載トレイ）
-    const rimGrad = ctx.createLinearGradient(TRAY_LEFT, TRAY_TOP_Y, TRAY_LEFT, TRAY_BOTTOM_Y + 8);
+    const rimGrad = tctx.createLinearGradient(TRAY_LEFT, TRAY_TOP_Y, TRAY_LEFT, TRAY_BOTTOM_Y + 8);
     rimGrad.addColorStop(0, '#64748b');
     rimGrad.addColorStop(0.5, '#cbd5e1');
     rimGrad.addColorStop(1, '#1e293b');
-    ctx.fillStyle = rimGrad;
-    ctx.beginPath();
-    ctx.roundRect(TRAY_LEFT - 4, TRAY_TOP_Y - 4, trayW + 8, trayH + 9, 11);
-    ctx.fill();
+    tctx.fillStyle = rimGrad;
+    tctx.beginPath();
+    tctx.roundRect(TRAY_LEFT - 4, TRAY_TOP_Y - 4, trayW + 8, trayH + 9, 11);
+    tctx.fill();
 
-    const innerGrad = ctx.createLinearGradient(0, TRAY_TOP_Y, 0, TRAY_BOTTOM_Y);
+    const innerGrad = tctx.createLinearGradient(0, TRAY_TOP_Y, 0, TRAY_BOTTOM_Y);
     innerGrad.addColorStop(0, '#04060b');
     innerGrad.addColorStop(0.45, '#0f172a');
     innerGrad.addColorStop(1, '#1e293b');
-    ctx.fillStyle = innerGrad;
-    ctx.beginPath();
-    ctx.roundRect(TRAY_LEFT, TRAY_TOP_Y, trayW, trayH, 8);
-    ctx.fill();
+    tctx.fillStyle = innerGrad;
+    tctx.beginPath();
+    tctx.roundRect(TRAY_LEFT, TRAY_TOP_Y, trayW, trayH, 8);
+    tctx.fill();
 
     // 下皿の奥行きフロア面（3Dパース底面）
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.55)';
-    ctx.beginPath();
-    ctx.moveTo(TRAY_LEFT + 10, TRAY_TOP_Y + 24);
-    ctx.lineTo(TRAY_RIGHT - 10, TRAY_TOP_Y + 24);
-    ctx.lineTo(TRAY_RIGHT - 3, TRAY_BOTTOM_Y - 3);
-    ctx.lineTo(TRAY_LEFT + 3, TRAY_BOTTOM_Y - 3);
-    ctx.closePath();
-    ctx.fill();
+    tctx.fillStyle = 'rgba(2, 6, 23, 0.55)';
+    tctx.beginPath();
+    tctx.moveTo(TRAY_LEFT + 10, TRAY_TOP_Y + 24);
+    tctx.lineTo(TRAY_RIGHT - 10, TRAY_TOP_Y + 24);
+    tctx.lineTo(TRAY_RIGHT - 3, TRAY_BOTTOM_Y - 3);
+    tctx.lineTo(TRAY_LEFT + 3, TRAY_BOTTOM_Y - 3);
+    tctx.closePath();
+    tctx.fill();
 
-    ctx.strokeStyle = 'rgba(0, 242, 254, 0.35)';
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    ctx.moveTo(TRAY_LEFT + 10, TRAY_BOTTOM_Y - 2);
-    ctx.lineTo(TRAY_RIGHT - 10, TRAY_BOTTOM_Y - 2);
-    ctx.stroke();
+    tctx.strokeStyle = 'rgba(0, 242, 254, 0.35)';
+    tctx.lineWidth = 1.8;
+    tctx.beginPath();
+    tctx.moveTo(TRAY_LEFT + 10, TRAY_BOTTOM_Y - 2);
+    tctx.lineTo(TRAY_RIGHT - 10, TRAY_BOTTOM_Y - 2);
+    tctx.stroke();
+
+    this.trayBaseCacheCanvas = off;
+    return off;
+  }
+
+  private drawBottomTrayAndInsertConsole(ctx: CanvasRenderingContext2D): void {
+    // 左側：コンパクト下皿の静的土台（DPR対応キャッシュ）
+    ctx.drawImage(this.getTrayBaseCache(), 0, 0, BOARD_WIDTH, BOARD_HEIGHT);
 
     ctx.fillStyle = 'rgba(148, 163, 184, 0.65)';
     ctx.font = 'bold 10px sans-serif';
@@ -5451,13 +6199,73 @@ export class MedalGame {
       : '【下皿】タップしてメダルを拾う';
     ctx.fillText(trayText, (TRAY_LEFT + TRAY_RIGHT) * 0.5, TRAY_TOP_Y + 13);
 
-    // 下皿内のメダルを下（yが大きい＝底面側）から上（yが小さい＝スタック上部）の順に3D描画
-    const trayMedals = this.physics.medals
-      .filter((m) => m.zone === 'tray')
-      .sort((a, b) => b.y - a.y || a.id - b.id);
+    // 下皿内のメダルを8列バケットごとに下（yが大きい＝底面側）から上（yが小さい＝スタック上部）の順に3D描画
+    // ※10段目（visualStackIdx = 10）に到達して同一座標に重なっている11枚目以降は、最上段の1枚（および落下中）のみを描画し、
+    //   完全に隠れている中間コインの無駄描きをスキップする（見た目は100%同一）
+    const colBuckets: MedalEntity[][] = TRAY_STACK_COLS.map(() => []);
+    for (let i = 0; i < this.physics.medals.length; i++) {
+      const m = this.physics.medals[i];
+      if (m.zone !== 'tray') continue;
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let c = 0; c < TRAY_STACK_COLS.length; c++) {
+        const d = Math.abs(TRAY_STACK_COLS[c] - m.x);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = c;
+        }
+      }
+      colBuckets[bestIdx].push(m);
+    }
 
-    for (const m of trayMedals) {
-      this.draw3DTrayCoin(ctx, m.x, m.y, m.radius, m.type);
+    const topCapFloorY = TRAY_BOTTOM_Y - 15 - 10 * TRAY_STACK_STEP_Y;
+    const visibleTrayMedals: MedalEntity[] = [];
+    let sigParts = '';
+    for (let c = 0; c < colBuckets.length; c++) {
+      const bucket = colBuckets[c];
+      if (bucket.length === 0) continue;
+      bucket.sort((a, b) => b.y - a.y || a.id - b.id);
+
+      let lastCappedSettledIdx = -1;
+      for (let k = 10; k < bucket.length; k++) {
+        if (bucket[k].y >= topCapFloorY - 0.5) {
+          lastCappedSettledIdx = k;
+        }
+      }
+
+      for (let k = 0; k < bucket.length; k++) {
+        if (
+          k >= 10 &&
+          bucket[k].y >= topCapFloorY - 0.5 &&
+          k !== lastCappedSettledIdx
+        ) {
+          continue;
+        }
+        const m = bucket[k];
+        visibleTrayMedals.push(m);
+        sigParts += `${m.id}:${Math.round(m.x * 2)},${Math.round(m.y * 2)};`;
+      }
+    }
+
+    if (visibleTrayMedals.length > 0) {
+      const dpr = this.getCacheDpr();
+      if (!this.trayCoinsLayerCacheCanvas || this.trayCoinsLayerSignature !== sigParts) {
+        if (!this.trayCoinsLayerCacheCanvas) {
+          const off = document.createElement('canvas');
+          off.width = Math.round(BOARD_WIDTH * dpr);
+          off.height = Math.round(BOARD_HEIGHT * dpr);
+          this.trayCoinsLayerCacheCanvas = off;
+        }
+        const lctx = this.trayCoinsLayerCacheCanvas.getContext('2d')!;
+        lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        lctx.clearRect(0, TRAY_TOP_Y - 30, TRAY_RIGHT + 30, BOARD_HEIGHT - (TRAY_TOP_Y - 30));
+        for (let i = 0; i < visibleTrayMedals.length; i++) {
+          const m = visibleTrayMedals[i];
+          this.draw3DTrayCoin(lctx, m.x, m.y, m.radius, m.type);
+        }
+        this.trayCoinsLayerSignature = sigParts;
+      }
+      ctx.drawImage(this.trayCoinsLayerCacheCanvas, 0, 0, BOARD_WIDTH, BOARD_HEIGHT);
     }
 
     if (this.isPointerDownOnTray) {
@@ -5576,26 +6384,64 @@ export class MedalGame {
     ctx.roundRect(boxCX - 25, slitY - 3, 50, 8, 3);
     ctx.fill();
 
-    ctx.strokeStyle = this.heldQueue.length > 0 ? '#00f2fe' : '#64748b';
+    const isAutoReload = this.stats.autoReloadUnlocked;
+    ctx.strokeStyle = isAutoReload || this.heldQueue.length > 0 ? '#00f2fe' : '#64748b';
     ctx.lineWidth = 1.8;
     ctx.beginPath();
     ctx.moveTo(boxCX - 26, slitY + 4);
     ctx.lineTo(boxCX + 26, slitY + 4);
     ctx.stroke();
 
-    ctx.fillStyle = this.heldQueue.length > 0 ? '#fde047' : '#94a3b8';
+    ctx.fillStyle = isAutoReload
+      ? '#38bdf8'
+      : this.heldQueue.length > 0
+      ? '#fde047'
+      : '#94a3b8';
     ctx.font = '900 11px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`手元: ${this.heldQueue.length} 枚`, boxCX, INSERT_BOX_BOTTOM - 17);
+    ctx.fillText(
+      isAutoReload ? 'AUTO 装填' : `手元: ${this.heldQueue.length} 枚`,
+      boxCX,
+      INSERT_BOX_BOTTOM - 17
+    );
 
-    ctx.fillStyle = this.heldQueue.length > 0 ? '#67e8f9' : '#64748b';
+    ctx.fillStyle = isAutoReload || this.heldQueue.length > 0 ? '#67e8f9' : '#64748b';
     ctx.font = 'bold 9.5px sans-serif';
-    const insertHint = this.stats.holdReloadUnlocked ? '長押しで連続投入' : 'タップで投入装填';
+    const insertHint = isAutoReload
+      ? '回収と同時に自動装填'
+      : this.stats.holdReloadUnlocked
+      ? '長押しで連続投入'
+      : 'タップで投入装填';
     ctx.fillText(insertHint, boxCX, INSERT_BOX_BOTTOM - 5);
   }
 
-  // 下皿用の3Dパース・積層コイン描画（円柱の厚み・ギザギザ側面・楕円天面）
+  // 下皿用の3Dパース・積層コイン描画（DPR対応オフスクリーンキャッシュで見た目100%維持＆高速描画）
   private draw3DTrayCoin(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    r: number,
+    type: MedalType
+  ): void {
+    const dpr = this.getCacheDpr();
+    const key = `${type}_${Math.round(r * 10)}`;
+    let sp = this.trayCoinSpriteCache.get(key);
+    if (!sp) {
+      const halfW = Math.ceil(r * 1.15 + 4);
+      const halfH = Math.ceil(r * 0.65 + 12);
+      const off = document.createElement('canvas');
+      off.width = Math.round(halfW * 2 * dpr);
+      off.height = Math.round(halfH * 2 * dpr);
+      const cctx = off.getContext('2d')!;
+      cctx.scale(dpr, dpr);
+      this.render3DTrayCoinRaw(cctx, halfW, halfH, r, type);
+      sp = { canvas: off, halfW, halfH };
+      this.trayCoinSpriteCache.set(key, sp);
+    }
+    ctx.drawImage(sp.canvas, x - sp.halfW, y - sp.halfH, sp.halfW * 2, sp.halfH * 2);
+  }
+
+  private render3DTrayCoinRaw(
     ctx: CanvasRenderingContext2D,
     x: number,
     y: number,
@@ -5691,6 +6537,373 @@ export class MedalGame {
     ctx.restore();
   }
 
+  private getMedalBaseSprite(
+    type: MedalType,
+    tier: 0 | 1 | 2 | 3 | 4,
+    r: number
+  ): { canvas: HTMLCanvasElement; half: number } {
+    const dpr = this.getCacheDpr();
+    const key = `${type}_t${tier}_r${Math.round(r * 10)}`;
+    const cached = this.medalSpriteCache.get(key);
+    if (cached) return cached;
+
+    const st = MEDAL_STYLE[type];
+    const half = Math.ceil(r + 22);
+    const off = document.createElement('canvas');
+    off.width = Math.round(half * 2 * dpr);
+    off.height = Math.round(half * 2 * dpr);
+    const mctx = off.getContext('2d')!;
+    mctx.scale(dpr, dpr);
+
+    // 1. Tier 1〜3 外周ソフト発光オーラ
+    if (tier === 1) {
+      const aura = mctx.createRadialGradient(half, half, r * 0.85, half, half, r + 5.5);
+      aura.addColorStop(0, 'rgba(0, 242, 254, 0.42)');
+      aura.addColorStop(0.65, 'rgba(56, 189, 248, 0.16)');
+      aura.addColorStop(1, 'rgba(0, 242, 254, 0)');
+      mctx.fillStyle = aura;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 5.5, 0, Math.PI * 2);
+      mctx.fill();
+    } else if (tier === 2) {
+      const aura = mctx.createRadialGradient(half, half, r * 0.85, half, half, r + 6.5);
+      aura.addColorStop(0, 'rgba(16, 185, 129, 0.52)');
+      aura.addColorStop(0.6, 'rgba(52, 211, 153, 0.22)');
+      aura.addColorStop(1, 'rgba(16, 185, 129, 0)');
+      mctx.fillStyle = aura;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 6.5, 0, Math.PI * 2);
+      mctx.fill();
+
+      mctx.strokeStyle = 'rgba(110, 231, 183, 0.5)';
+      mctx.lineWidth = 1.2;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 2.8, 0, Math.PI * 2);
+      mctx.stroke();
+    } else if (tier === 3) {
+      const pulse = 0.5;
+      const auraR = r + 7.5 + pulse * 1.2;
+      const aura = mctx.createRadialGradient(half, half, r * 0.85, half, half, auraR);
+      aura.addColorStop(0, `rgba(255, 23, 68, ${0.56 + pulse * 0.14})`);
+      aura.addColorStop(0.55, `rgba(244, 63, 94, ${0.26 + pulse * 0.1})`);
+      aura.addColorStop(1, 'rgba(255, 23, 68, 0)');
+      mctx.fillStyle = aura;
+      mctx.beginPath();
+      mctx.arc(half, half, auraR, 0, Math.PI * 2);
+      mctx.fill();
+
+      mctx.strokeStyle = `rgba(251, 113, 133, ${0.65 + pulse * 0.25})`;
+      mctx.lineWidth = 1.5;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 3.2 + pulse * 0.8, 0, Math.PI * 2);
+      mctx.stroke();
+    }
+
+    // 2. メダル本体（種別ごとの固有色を維持）
+    if (tier === 0 && type !== 'normal') {
+      mctx.shadowColor = st.c1;
+      mctx.shadowBlur = 5;
+    }
+
+    const grad = mctx.createLinearGradient(half - r, half - r, half + r, half + r);
+    grad.addColorStop(0, st.c1);
+    grad.addColorStop(0.5, st.c2);
+    grad.addColorStop(1, '#0f172a');
+
+    mctx.fillStyle = grad;
+    mctx.beginPath();
+    mctx.arc(half, half, r, 0, Math.PI * 2);
+    mctx.fill();
+    mctx.shadowBlur = 0;
+
+    // 内側装飾リング
+    mctx.strokeStyle = 'rgba(255, 255, 255, 0.36)';
+    mctx.lineWidth = 1.0;
+    mctx.beginPath();
+    mctx.arc(half, half, r * 0.72, 0, Math.PI * 2);
+    mctx.stroke();
+
+    // 3. 外枠ネオンリング（Tier 1 以上はダークセパレーター）
+    if (tier >= 1) {
+      mctx.strokeStyle = 'rgba(2, 6, 23, 0.82)';
+      mctx.lineWidth = 1.6;
+      mctx.beginPath();
+      mctx.arc(half, half, r - 1.3, 0, Math.PI * 2);
+      mctx.stroke();
+    }
+
+    if (tier === 0) {
+      mctx.strokeStyle = st.rim;
+      mctx.lineWidth = 2.2;
+      mctx.beginPath();
+      mctx.arc(half, half, r, 0, Math.PI * 2);
+      mctx.stroke();
+    } else if (tier === 1) {
+      mctx.shadowColor = '#00f2fe';
+      mctx.shadowBlur = 8;
+      mctx.strokeStyle = '#00f2fe';
+      mctx.lineWidth = 2.9;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 0.1, 0, Math.PI * 2);
+      mctx.stroke();
+
+      mctx.shadowBlur = 0;
+      mctx.strokeStyle = '#e0f2fe';
+      mctx.lineWidth = 0.9;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 0.1, 0, Math.PI * 2);
+      mctx.stroke();
+    } else if (tier === 2) {
+      mctx.shadowColor = '#10b981';
+      mctx.shadowBlur = 10;
+      mctx.strokeStyle = '#34d399';
+      mctx.lineWidth = 3.2;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 0.2, 0, Math.PI * 2);
+      mctx.stroke();
+
+      mctx.shadowBlur = 0;
+      mctx.strokeStyle = '#ecfdf5';
+      mctx.lineWidth = 1.0;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 0.2, 0, Math.PI * 2);
+      mctx.stroke();
+    } else if (tier === 3) {
+      mctx.shadowColor = '#ff1744';
+      mctx.shadowBlur = 12;
+      mctx.strokeStyle = '#ff2a5f';
+      mctx.lineWidth = 3.5;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 0.3, 0, Math.PI * 2);
+      mctx.stroke();
+
+      mctx.shadowBlur = 0;
+      mctx.strokeStyle = '#ffe4e6';
+      mctx.lineWidth = 1.1;
+      mctx.beginPath();
+      mctx.arc(half, half, r + 0.3, 0, Math.PI * 2);
+      mctx.stroke();
+    }
+
+    const entry = { canvas: off, half };
+    this.medalSpriteCache.set(key, entry);
+    return entry;
+  }
+
+  private getMedalRainbowRingSprite(r: number): { canvas: HTMLCanvasElement; half: number } {
+    const dpr = this.getCacheDpr();
+    const rKey = Math.round(r * 10);
+    const cached = this.medalRainbowRingCache.get(rKey);
+    if (cached) return cached;
+
+    const half = Math.ceil(r + 26);
+    const off = document.createElement('canvas');
+    off.width = Math.round(half * 2 * dpr);
+    off.height = Math.round(half * 2 * dpr);
+    const rctx = off.getContext('2d')!;
+    rctx.scale(dpr, dpr);
+
+    // 1. 外周オーラ
+    const auraR = r + 9.7;
+    const aura = rctx.createRadialGradient(half, half, r * 0.85, half, half, auraR);
+    aura.addColorStop(0, 'hsla(330, 100%, 62%, 0.58)');
+    aura.addColorStop(0.5, 'hsla(190, 100%, 60%, 0.28)');
+    aura.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    rctx.fillStyle = aura;
+    rctx.beginPath();
+    rctx.arc(half, half, auraR, 0, Math.PI * 2);
+    rctx.fill();
+
+    // 2. 外周プリズム二重オービットリング
+    if (typeof rctx.createConicGradient === 'function') {
+      const outerRain = rctx.createConicGradient(0, half, half);
+      outerRain.addColorStop(0.0, 'rgba(255, 77, 109, 0.82)');
+      outerRain.addColorStop(0.18, 'rgba(253, 224, 71, 0.82)');
+      outerRain.addColorStop(0.36, 'rgba(52, 211, 153, 0.82)');
+      outerRain.addColorStop(0.54, 'rgba(0, 242, 254, 0.82)');
+      outerRain.addColorStop(0.72, 'rgba(167, 139, 250, 0.82)');
+      outerRain.addColorStop(0.88, 'rgba(244, 114, 182, 0.82)');
+      outerRain.addColorStop(1.0, 'rgba(255, 77, 109, 0.82)');
+      rctx.strokeStyle = outerRain;
+    } else {
+      rctx.strokeStyle = 'hsla(200, 100%, 66%, 0.82)';
+    }
+    rctx.lineWidth = 1.6;
+    rctx.beginPath();
+    rctx.arc(half, half, r + 4.1, 0, Math.PI * 2);
+    rctx.stroke();
+
+    // 3. メインレインボー外枠（shadowBlur = 14 付き 7色コニックグラデーション）
+    rctx.shadowColor = '#38bdf8';
+    rctx.shadowBlur = 14;
+    if (typeof rctx.createConicGradient === 'function') {
+      const rainGrad = rctx.createConicGradient(0, half, half);
+      rainGrad.addColorStop(0.0, '#ff3b6b');
+      rainGrad.addColorStop(0.16, '#fb923c');
+      rainGrad.addColorStop(0.32, '#fde047');
+      rainGrad.addColorStop(0.48, '#34d399');
+      rainGrad.addColorStop(0.64, '#00f2fe');
+      rainGrad.addColorStop(0.82, '#c084fc');
+      rainGrad.addColorStop(1.0, '#ff3b6b');
+      rctx.strokeStyle = rainGrad;
+    } else {
+      rctx.strokeStyle = '#38bdf8';
+    }
+    rctx.lineWidth = 3.8;
+    rctx.beginPath();
+    rctx.arc(half, half, r + 0.4, 0, Math.PI * 2);
+    rctx.stroke();
+
+    // 内芯の白光沢ハイライト
+    rctx.shadowBlur = 0;
+    rctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
+    rctx.lineWidth = 1.0;
+    rctx.beginPath();
+    rctx.arc(half, half, r + 0.4, 0, Math.PI * 2);
+    rctx.stroke();
+
+    // 外周を公転する2点のプリズム星光スパーク
+    for (let k = 0; k < 2; k++) {
+      const ang = k * Math.PI;
+      const sx = half + Math.cos(ang) * (r + 3.6);
+      const sy = half + Math.sin(ang) * (r + 3.6);
+      rctx.fillStyle = '#ffffff';
+      rctx.beginPath();
+      rctx.moveTo(sx, sy - 3.2);
+      rctx.lineTo(sx + 1.0, sy - 1.0);
+      rctx.lineTo(sx + 3.2, sy);
+      rctx.lineTo(sx + 1.0, sy + 1.0);
+      rctx.lineTo(sx, sy + 3.2);
+      rctx.lineTo(sx - 1.0, sy + 1.0);
+      rctx.lineTo(sx - 3.2, sy);
+      rctx.lineTo(sx - 1.0, sy - 1.0);
+      rctx.closePath();
+      rctx.fill();
+    }
+
+    const entry = { canvas: off, half };
+    this.medalRainbowRingCache.set(rKey, entry);
+    return entry;
+  }
+
+  private getMedalRainbowRotFrame(
+    r: number,
+    rot: number
+  ): { canvas: HTMLCanvasElement; half: number } {
+    const dpr = this.getCacheDpr();
+    const rKey = Math.round(r * 10);
+    const frameCount = 24;
+    let frames = this.medalRainbowRotFramesCache.get(rKey);
+    if (!frames) {
+      const baseRing = this.getMedalRainbowRingSprite(r);
+      frames = [];
+      for (let i = 0; i < frameCount; i++) {
+        const ang = (i / frameCount) * Math.PI * 2;
+        const off = document.createElement('canvas');
+        off.width = baseRing.canvas.width;
+        off.height = baseRing.canvas.height;
+        const fctx = off.getContext('2d')!;
+        fctx.scale(dpr, dpr);
+        fctx.translate(baseRing.half, baseRing.half);
+        fctx.rotate(ang);
+        fctx.drawImage(
+          baseRing.canvas,
+          -baseRing.half,
+          -baseRing.half,
+          baseRing.half * 2,
+          baseRing.half * 2
+        );
+        frames.push({ canvas: off, half: baseRing.half });
+      }
+      this.medalRainbowRotFramesCache.set(rKey, frames);
+    }
+    const norm = ((rot % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const idx = Math.floor((norm / (Math.PI * 2)) * frameCount) % frameCount;
+    return frames[idx];
+  }
+
+  private getMedalLabelSprite(
+    labelText: string,
+    fontPx: number
+  ): { canvas: HTMLCanvasElement; halfW: number; halfH: number } {
+    const dpr = this.getCacheDpr();
+    const key = `${labelText}_${fontPx}`;
+    const cached = this.medalLabelSpriteCache.get(key);
+    if (cached) return cached;
+
+    if (this.medalLabelSpriteCache.size > 180) {
+      this.medalLabelSpriteCache.clear();
+    }
+
+    const halfW = Math.ceil(fontPx * 2.0 + 4);
+    const halfH = Math.ceil(fontPx * 0.9 + 4);
+    const off = document.createElement('canvas');
+    off.width = Math.round(halfW * 2 * dpr);
+    off.height = Math.round(halfH * 2 * dpr);
+    const lctx = off.getContext('2d')!;
+    lctx.scale(dpr, dpr);
+
+    lctx.font = `900 ${fontPx}px 'Segoe UI', sans-serif`;
+    lctx.textAlign = 'center';
+    lctx.textBaseline = 'middle';
+    lctx.lineJoin = 'round';
+    lctx.strokeStyle = 'rgba(2, 6, 23, 0.92)';
+    lctx.lineWidth = 2.8;
+    lctx.strokeText(labelText, halfW, halfH);
+    lctx.fillStyle = '#ffffff';
+    lctx.fillText(labelText, halfW, halfH);
+
+    const entry = { canvas: off, halfW, halfH };
+    this.medalLabelSpriteCache.set(key, entry);
+    return entry;
+  }
+
+  private drawFloatingTextCached(ctx: CanvasRenderingContext2D, ft: FloatingText): void {
+    const dpr = this.getCacheDpr();
+    const fontPx = Math.round(14 * ft.scale);
+    const key = `${ft.text}|${ft.color}|${fontPx}`;
+    let sp = this.floatingTextSpriteCache.get(key);
+    if (!sp) {
+      if (this.floatingTextSpriteCache.size > 120) {
+        this.floatingTextSpriteCache.clear();
+      }
+      const halfW = Math.ceil(Math.max(44, ft.text.length * fontPx * 0.65) + 14);
+      const halfH = Math.ceil(fontPx * 1.1 + 12);
+      const off = document.createElement('canvas');
+      off.width = Math.round(halfW * 2 * dpr);
+      off.height = Math.round(halfH * 2 * dpr);
+      const fctx = off.getContext('2d')!;
+      fctx.scale(dpr, dpr);
+
+      fctx.font = `900 ${fontPx}px 'Segoe UI', sans-serif`;
+      fctx.textAlign = 'center';
+      fctx.textBaseline = 'alphabetic';
+      fctx.shadowColor = ft.color;
+      fctx.shadowBlur = 8;
+      fctx.strokeStyle = '#050811';
+      fctx.lineWidth = 3.5;
+      fctx.strokeText(ft.text, halfW, halfH);
+      fctx.fillStyle = ft.color;
+      fctx.fillText(ft.text, halfW, halfH);
+
+      sp = { canvas: off, halfW, halfH };
+      this.floatingTextSpriteCache.set(key, sp);
+    }
+
+    const alpha = Math.max(0, ft.alpha);
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(
+      sp.canvas,
+      ft.x - sp.halfW,
+      ft.y - sp.halfH,
+      sp.halfW * 2,
+      sp.halfH * 2
+    );
+    ctx.restore();
+  }
+
   private drawMedalGraphic(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -5701,42 +6914,56 @@ export class MedalGame {
     contactFlash: number
   ): void {
     const st = MEDAL_STYLE[type];
-    ctx.save();
+    const tier = this.getChargeVisualTier(chargeMult);
 
-    if (chargeMult > 1.05 || type !== 'normal') {
-      ctx.shadowColor = chargeMult > 1.2 ? '#d946ef' : st.c1;
-      ctx.shadowBlur = chargeMult > 1.2 ? 12 : 6;
+    if (tier === 4) {
+      const nowSec = performance.now() * 0.001;
+      const rot = (nowSec * 3.4) % (Math.PI * 2);
+      const baseSp = this.getMedalBaseSprite(type, 4, r);
+      const ringSp = this.getMedalRainbowRotFrame(r, rot);
+
+      ctx.drawImage(
+        baseSp.canvas,
+        x - baseSp.half,
+        y - baseSp.half,
+        baseSp.half * 2,
+        baseSp.half * 2
+      );
+      ctx.drawImage(
+        ringSp.canvas,
+        x - ringSp.half,
+        y - ringSp.half,
+        ringSp.half * 2,
+        ringSp.half * 2
+      );
+    } else {
+      const sp = this.getMedalBaseSprite(type, tier, r);
+      ctx.drawImage(sp.canvas, x - sp.half, y - sp.half, sp.half * 2, sp.half * 2);
     }
 
-    const grad = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
-    grad.addColorStop(0, st.c1);
-    grad.addColorStop(0.5, st.c2);
-    grad.addColorStop(1, '#0f172a');
+    if (contactFlash > 0.1) {
+      ctx.save();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = tier >= 3 ? 3.4 : 2.8;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = contactFlash > 0.1 ? '#ffffff' : st.rim;
-    ctx.lineWidth = 2.4;
-    ctx.stroke();
-
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(x, y, r * 0.72, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.round(r * 0.52)}px 'Segoe UI', sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const labelText =
-      chargeMult >= 1.15 ? `×${chargeMult.toFixed(1)}` : st.label;
-    ctx.fillText(labelText, x, y + 0.5);
-
-    ctx.restore();
+    // === 4. 中央ラベル／倍率テキスト（黒縁取りスプライトキャッシュで高視認性＆超高速化） ===
+    const isMultShown = chargeMult >= 1.15;
+    const labelText = isMultShown ? `×${chargeMult.toFixed(1)}` : st.label;
+    const fontScale = isMultShown ? (chargeMult >= 10.0 ? 0.47 : 0.56) : 0.54;
+    const fontPx = Math.round(r * fontScale);
+    const labelSp = this.getMedalLabelSprite(labelText, fontPx);
+    ctx.drawImage(
+      labelSp.canvas,
+      x - labelSp.halfW,
+      y + 0.5 - labelSp.halfH,
+      labelSp.halfW * 2,
+      labelSp.halfH * 2
+    );
   }
 
   private renderTreePhase(): void {
@@ -6032,16 +7259,16 @@ export class MedalGame {
         ctx.restore();
       }
 
-      // ③ 天体の外枠強調（強化可能ノードは外枠のみピンク発光で強調、最大Lvは優しい水色光彩）
+      // ③ 天体の外枠強調（強化可能ノードは外枠のみピンク発光で強調、最大Lvは上品なシャンパンゴールド光彩）
       if (isMax) {
-        // 最大Lv：優しい水色の星光リング（まぶしさを排した上品な輝き）
+        // 最大Lv：上品なシャンパンゴールドの星光リング
         ctx.save();
-        ctx.shadowColor = '#38bdf8';
-        ctx.shadowBlur = 8;
-        ctx.strokeStyle = '#7dd3fc';
-        ctx.lineWidth = 1.8;
+        ctx.shadowColor = '#f59e0b';
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#fde68a';
+        ctx.lineWidth = 2.0;
         ctx.beginPath();
-        ctx.arc(node.gx, node.gy, r + 1.4, 0, Math.PI * 2);
+        ctx.arc(node.gx, node.gy, r + 1.5, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       } else if (canBuy) {
@@ -6106,11 +7333,11 @@ export class MedalGame {
       );
 
       if (isMax) {
-        // 最大Lv：透き通る優しい水色の天体球体（パステルフロストシアン）
-        planetGrad.addColorStop(0, '#ffffff');
-        planetGrad.addColorStop(0.25, '#e0f2fe');
-        planetGrad.addColorStop(0.65, '#7dd3fc');
-        planetGrad.addColorStop(1, '#0284c7');
+        // 最大Lv：上品なシャンパンゴールド〜アンティークアンバーの天体球体
+        planetGrad.addColorStop(0, '#fffbeb');
+        planetGrad.addColorStop(0.28, '#fef08a');
+        planetGrad.addColorStop(0.68, '#f59e0b');
+        planetGrad.addColorStop(1, '#b45309');
       } else if (lv > 0) {
         // 取得済み：サファイア惑星球体（蒼い天体）
         planetGrad.addColorStop(0, '#38bdf8');
@@ -6137,31 +7364,25 @@ export class MedalGame {
       ctx.fill();
 
       // ⑤ 完全正円の柔らかな光沢ハイライト
-      ctx.fillStyle = isMax ? 'rgba(255, 255, 255, 0.65)' : 'rgba(255, 255, 255, 0.3)';
+      ctx.fillStyle = isMax ? 'rgba(255, 255, 255, 0.7)' : 'rgba(255, 255, 255, 0.3)';
       ctx.beginPath();
       ctx.arc(lightX, lightY, r * 0.2, 0, Math.PI * 2);
       ctx.fill();
 
-      // ⑥ ノードのシンボルアイコン（高コントラスト描画）
-      if (isMax) {
-        ctx.fillStyle = '#082f49'; // 澄んだ水色背景に上品に映えるディープスカイネイビー
-      } else if (canBuy || lv > 0) {
-        ctx.fillStyle = '#ffffff'; // 強化可能＆取得済みは鮮明な白アイコン
-      } else {
-        ctx.fillStyle = 'rgba(241, 245, 249, 0.8)'; // 未取得（グレーアウト）は自然なシルバーグレー
-      }
-
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(node.icon, node.gx, node.gy + 0.5);
+      // ⑥ ノードの天体SVGシンボルアイコン（状態連動・高コントラスト描画）
+      const iconTone: TreeIconTone = isMax
+        ? 'max'
+        : canBuy || lv > 0
+        ? 'active'
+        : 'locked';
+      drawTreeIcon(ctx, node.icon, iconTone, node.gx, node.gy, r * 1.28);
 
       // ⑦ 惑星軌道カプセル（レベル表示）
       ctx.save();
       const badgeY = node.gy + r + 6.5;
-      ctx.fillStyle = 'rgba(6, 10, 26, 0.94)';
+      ctx.fillStyle = isMax ? 'rgba(32, 20, 4, 0.94)' : 'rgba(6, 10, 26, 0.94)';
       ctx.strokeStyle = isMax
-        ? '#7dd3fc'
+        ? '#fde047'
         : canBuy
         ? '#f472b6'
         : lv > 0
@@ -6174,7 +7395,7 @@ export class MedalGame {
       ctx.stroke();
 
       ctx.font = 'bold 8px Consolas, sans-serif';
-      ctx.fillStyle = isMax ? '#e0f2fe' : canBuy ? '#fbcfe8' : lv > 0 ? '#7dd3fc' : '#cbd5e1';
+      ctx.fillStyle = isMax ? '#fef08a' : canBuy ? '#fbcfe8' : lv > 0 ? '#7dd3fc' : '#cbd5e1';
       ctx.fillText(`${lv}/${node.maxLevel}`, node.gx, badgeY);
       ctx.restore();
 
@@ -6194,7 +7415,7 @@ export class MedalGame {
         const mainCol = eff.isMilestone
           ? '#fde047'
           : eff.isMax
-            ? '#7dd3fc'
+            ? '#fde047'
             : '#f472b6';
 
         ctx.shadowColor = mainCol;
@@ -6361,6 +7582,8 @@ export class MedalGame {
       'outer_3',
       'outer_5',
       'prism_target',
+      'auto_reload',
+      'starfall',
       'jp_fever',
       'jp_freeze',
       'engraving_slot2',
